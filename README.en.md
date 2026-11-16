@@ -88,6 +88,21 @@ Install directly from GitHub:
 magpie plugin add https://github.com/DylanLIiii/opencode-antigravity-bridge
 ```
 
+### OMP (oh-my-pi)
+
+```sh
+omp plugin install https://github.com/hellopoisonx/opencode-antigravity-bridge
+omp --model antigravity-bridge/gemini-3.8-flash
+```
+
+OMP uses the same ACP transport, lean agent and tool bridge under a different
+host. Models come from `agy models`, with thinking levels expanded from the
+effort variants each account actually advertises; the agy CLI login (including
+named accounts) is reused as-is. The catalog is cached at
+`~/.omp/agent/antigravity-bridge/models.json` and refreshed in the background
+after six hours; `omp models refresh` re-reads it immediately. Context and
+output limits come from CloudCode metadata, falling back to 256K / 32K.
+
 ## Use
 
 1. In Magpie, choose Providers → Antigravity Bridge → Sign in (or **Add

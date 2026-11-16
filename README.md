@@ -124,6 +124,19 @@ magpie plugin add https://github.com/DylanLIiii/opencode-antigravity-bridge
 # 4. 在账号列表选择 work，选择普通模型（可选思考等级），开始对话
 ```
 
+### 在 OMP (oh-my-pi) 中使用
+
+```sh
+omp plugin install https://github.com/hellopoisonx/opencode-antigravity-bridge
+omp --model antigravity-bridge/gemini-3.8-flash
+```
+
+OMP 复用同一套 ACP 会话、精简 agent 和工具桥接，只是换了宿主：模型来自 `agy models`，
+按账号实际提供的 effort 展开思考等级；`agy` 自身的登录（含已有命名账号）直接生效。
+模型目录缓存在 `~/.omp/agent/antigravity-bridge/models.json`，超过六小时在后台刷新；
+`omp models refresh` 可立即重新读取。上下文窗口与输出上限按 CloudCode 元数据给出，
+未知时回退 256K / 32K。
+
 ### 账号管理入口
 
 原生模式下，在 **Providers → Antigravity Bridge** 中，首次接入点「登录」，已有连接点

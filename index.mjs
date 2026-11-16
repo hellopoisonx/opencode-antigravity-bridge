@@ -1,4 +1,4 @@
-import { agyCandidates, spawnAgy, windowsMcpShim, wslAgyPath, wslDistro, wslMcpShim, wslPath } from "./platform.mjs"
+import { agyCandidates, posixMcpShim, spawnAgy, windowsMcpShim, wslAgyPath, wslDistro, wslMcpShim, wslPath } from "./platform.mjs"
 import { spawn } from "node:child_process"
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import { once } from "node:events"
@@ -797,10 +797,6 @@ class AgentTurnError extends Error {
   }
 }
 
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`
-}
-
 // agy connects to --ide-mcp-port by running `nc host port`. A private `nc`
 // earlier in agy's PATH runs the bridge's stdio MCP server instead, so the
 // connection is authenticated by the per-process token in its environment.
@@ -809,16 +805,17 @@ function ensureShimDir() {
   if (shimDirPromise) return shimDirPromise
   shimDirPromise = (async () => {
     const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "magpie-agy-bridge-bin-"))
+    const shimOpts = { bun: Boolean(process.versions?.bun) }
     if (distro) {
       await fs.promises.writeFile(path.join(dir, "nc"),
-        wslMcpShim(process.execPath, MCP_SERVER_PATH, distro), { mode: 0o700 })
+        wslMcpShim(process.execPath, MCP_SERVER_PATH, distro, shimOpts), { mode: 0o700 })
       await fs.promises.chmod(path.join(dir, "nc"), 0o700)
     } else if (process.platform === "win32") {
       await fs.promises.writeFile(path.join(dir, "nc.cmd"),
-        windowsMcpShim(process.execPath, MCP_SERVER_PATH))
+        windowsMcpShim(process.execPath, MCP_SERVER_PATH, shimOpts))
     } else {
       await fs.promises.writeFile(path.join(dir, "nc"),
-        `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(MCP_SERVER_PATH)}\n`, { mode: 0o700 })
+        posixMcpShim(process.execPath, MCP_SERVER_PATH, shimOpts), { mode: 0o700 })
     }
     shimDir = dir
     return dir

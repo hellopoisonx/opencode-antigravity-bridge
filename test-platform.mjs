@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import childProcess from "node:child_process"
 import { syncBuiltinESMExports } from "node:module"
 import { test } from "node:test"
-import { agyCandidates, agySpawnSpec, childEnv, spawnAgy, windowsMcpShim } from "./platform.mjs"
+import { agyCandidates, agySpawnSpec, childEnv, posixMcpShim, spawnAgy, windowsMcpShim } from "./platform.mjs"
 
 test("Windows discovery considers exe/cmd/bat, Path and LOCALAPPDATA", () => {
   const candidates = agyCandidates({ Path: 'C:\\Program Files\\agy;D:\\tools', LOCALAPPDATA: 'C:\\Users\\Test\\AppData\\Local' }, 'C:\\Users\\Test', 'win32')
@@ -44,7 +44,32 @@ test("batch invocation rejects command line breaks", () => {
 test("nc.cmd quotes paths, escapes percent expansion and disables delayed expansion", () => {
   const script = windowsMcpShim('C:\\Program Files\\node.exe', 'C:\\user%name%!\\mcp-server.mjs')
   assert.equal(script, '@echo off\r\nsetlocal DisableDelayedExpansion\r\n"C:\\Program Files\\node.exe" "C:\\user%%name%%!\\mcp-server.mjs"\r\n')
+  assert.equal(
+    windowsMcpShim('C:\\omp\\omp.exe', 'C:\\bridge\\mcp-server.mjs', { bun: true }),
+    '@echo off\r\nsetlocal DisableDelayedExpansion\r\nset BUN_BE_BUN=1\r\n"C:\\omp\\omp.exe" "C:\\bridge\\mcp-server.mjs"\r\n',
+  )
   assert.throws(() => windowsMcpShim('node.exe', 'bad"path'), /invalid Windows MCP shim path/)
+})
+
+test("POSIX and WSL MCP shims set BUN_BE_BUN only when asked and reject control characters", async () => {
+  assert.equal(
+    posixMcpShim("/usr/bin/node", "/opt/oab/mcp-server.mjs"),
+    "#!/bin/sh\nexec '/usr/bin/node' '/opt/oab/mcp-server.mjs'\n",
+  )
+  assert.equal(
+    posixMcpShim("/usr/bin/omp", "/opt/a'b/mcp-server.mjs", { bun: true }),
+    "#!/bin/sh\nexport BUN_BE_BUN=1\nexec '/usr/bin/omp' '/opt/a'\\''b/mcp-server.mjs'\n",
+  )
+  assert.throws(() => posixMcpShim("/usr/bin/omp\nbad", "/opt/mcp.mjs"), /invalid POSIX MCP shim path/)
+
+  const { wslMcpShim } = await import("./platform.mjs")
+  const plain = wslMcpShim("C:\\Program Files\\node.exe", "C:\\bridge\\mcp.mjs", "Ubuntu")
+  assert.doesNotMatch(plain, /BUN_BE_BUN/)
+  const bunWsl = wslMcpShim("C:\\omp\\omp.exe", "C:\\bridge\\mcp.mjs", "Ubuntu", { bun: true })
+  assert.equal(
+    bunWsl,
+    '#!/bin/sh\nexport BUN_BE_BUN=1\nWSLENV="${WSLENV:+$WSLENV:}BUN_BE_BUN"\nexport WSLENV\nexec \'/mnt/c/omp/omp.exe\' \'C:\\bridge\\mcp.mjs\'\n',
+  )
 })
 
 test("npm cmd-shims escape metacharacters for the second expansion pass", () => {

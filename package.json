@@ -1,11 +1,12 @@
 {
   "name": "@magpie-community/opencode-antigravity-bridge",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Connect to Antigravity via the official agy CLI with lean prompts and session reuse. Native Magpie accounts share model IDs and use the host account router; OpenCode supports account-prefixed models.",
   "type": "module",
   "main": "./index.mjs",
   "exports": {
-    ".": "./opencode2.mjs"
+    ".": "./opencode2.mjs",
+    "./omp": "./omp.mjs"
   },
   "bin": {
     "agy-bridge": "./bin/agy-bridge.mjs"
@@ -31,6 +32,7 @@
     "signin.mjs",
     "opencode.mjs",
     "opencode2.mjs",
+    "omp.mjs",
     "re2-pattern.mjs",
     "cloak.mjs",
     "compaction.mjs",
@@ -52,7 +54,7 @@
     "ui/"
   ],
   "scripts": {
-    "test": "node --test test-acp-compat.mjs test-compaction.mjs test-context-ui.mjs test-install.mjs test-opencode2.mjs test-native-accounts.mjs test-turn-timeout.mjs test-agent-notice.mjs test-step-usage.mjs test-step-usage-extra.mjs test-usage.mjs test-compat.mjs test-model-discovery.mjs test-model-metadata.mjs test-platform.mjs test-prompt-guard.mjs test-tool-schema.mjs test-tool-budget.mjs test-signin.mjs test-schema-parity.mjs test-upstream-error.mjs test-auth-retry.mjs test-thought-filter.mjs test-mcp-server.mjs test-accounts-import.mjs test-accounts-login.mjs test-wsl.mjs test-context-unlock.mjs test-bridge-fixes.mjs && node test/array-items-unit.mjs && node test-smoke.mjs",
+    "test": "node --test test-acp-compat.mjs test-compaction.mjs test-context-ui.mjs test-install.mjs test-opencode2.mjs test-omp.mjs test-native-accounts.mjs test-turn-timeout.mjs test-agent-notice.mjs test-step-usage.mjs test-step-usage-extra.mjs test-usage.mjs test-compat.mjs test-model-discovery.mjs test-model-metadata.mjs test-platform.mjs test-prompt-guard.mjs test-tool-schema.mjs test-tool-budget.mjs test-signin.mjs test-schema-parity.mjs test-upstream-error.mjs test-auth-retry.mjs test-thought-filter.mjs test-mcp-server.mjs test-accounts-import.mjs test-accounts-login.mjs test-wsl.mjs test-context-unlock.mjs test-bridge-fixes.mjs && node test/array-items-unit.mjs && node test-smoke.mjs",
     "test:integration": "node test-integration.mjs"
   },
   "keywords": [
@@ -97,5 +99,10 @@
   },
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "pi": {
+    "extensions": [
+      "./omp.mjs"
+    ]
   }
 }

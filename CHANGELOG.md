@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+- Add the OMP (oh-my-pi) face (`omp.mjs`, `pi.extensions`, `exports["./omp"]`): register the `antigravity-bridge` provider on OMP, reuse the host's Anthropic Messages adapter with the bridge's in-process fetch, and carry the OMP session id and working directory into the bridge's conversation key and ACP workdir.
+- Cache the `agy models` catalog under `~/.omp/agent/antigravity-bridge/models.json` so OMP startup does not wait on the CLI; refresh in the background after six hours and through `omp models refresh`. Thinking levels expand only the effort variants the account advertises.
+- Set `BUN_BE_BUN=1` inside the `nc` MCP shim on POSIX, Windows, and WSL when running under Bun so compiled Bun hosts (such as `omp` and standalone OpenCode binaries) execute `mcp-server.mjs` instead of re-entering the host CLI.
+
 ## 0.9.0
 
 - Register hook-defined providers in the OpenCode 2.x adapter and contain failed sign-in callbacks. Bound and cancel installer version checks, route archive/file errors to the caller, and preserve the working Windows binary on replacement or rollback failure.

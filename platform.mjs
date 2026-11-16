@@ -43,12 +43,13 @@ export function wslPath(file, distro, platform = process.platform) {
 // WSL interop (absolute /mnt path, so appendWindowsPath is not needed). The
 // module argument stays a Windows path because the .exe is a Windows process;
 // the control port/token arrive through WSLENV, never argv.
-export function wslMcpShim(executable, server, distro) {
+export function wslMcpShim(executable, server, distro, { bun = false } = {}) {
   const quote = value => {
     if (/[\0\r\n]/.test(value)) throw new Error("invalid WSL MCP shim path")
     return `'${String(value).replace(/'/g, `'\\''`)}'`
   }
-  return `#!/bin/sh\nexec ${quote(wslPath(executable, distro, "win32"))} ${quote(server)}\n`
+  const env = bun ? 'export BUN_BE_BUN=1\nWSLENV="${WSLENV:+$WSLENV:}BUN_BE_BUN"\nexport WSLENV\n' : ""
+  return `#!/bin/sh\n${env}exec ${quote(wslPath(executable, distro, "win32"))} ${quote(server)}\n`
 }
 
 const WSL_FORWARDED = ["AGY_CLI_DISABLE_AUTO_UPDATE", "AGY_BRIDGE_CONTROL_PORT", "AGY_BRIDGE_TOKEN"]
@@ -190,10 +191,20 @@ export function spawnAgy(file, args, options = {}) {
   return spawn(command.file, command.args, { ...options, ...command.options, windowsHide: true, env })
 }
 
-export function windowsMcpShim(executable, server) {
+export function windowsMcpShim(executable, server, { bun = false } = {}) {
   const quote = value => {
     if (/["\0\r\n]/.test(value)) throw new Error("invalid Windows MCP shim path")
     return `"${value.replace(/%/g, "%%")}"`
   }
-  return `@echo off\r\nsetlocal DisableDelayedExpansion\r\n${quote(executable)} ${quote(server)}\r\n`
+  const env = bun ? "set BUN_BE_BUN=1\r\n" : ""
+  return `@echo off\r\nsetlocal DisableDelayedExpansion\r\n${env}${quote(executable)} ${quote(server)}\r\n`
+}
+
+export function posixMcpShim(executable, server, { bun = false } = {}) {
+  const quote = value => {
+    if (/[\0\r\n]/.test(value)) throw new Error("invalid POSIX MCP shim path")
+    return `'${String(value).replace(/'/g, `'\\''`)}'`
+  }
+  const env = bun ? "export BUN_BE_BUN=1\n" : ""
+  return `#!/bin/sh\n${env}exec ${quote(executable)} ${quote(server)}\n`
 }

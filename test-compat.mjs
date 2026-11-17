@@ -29,8 +29,10 @@ const { promptAttempts, claimPromptAttempt, settlePromptAttempt, releasePromptAt
 
 function cancelledFixture(key) {
   const messages = [{ role: "user", content: "original request " + "x".repeat(1_000_000) }]
-  const opts = { messages, history: [], tools: [], model: "test-model", selection: { model: "test-model", effort: "high" },
-    instructions: "test instructions", workDir: workspace, account: null, userId: "cancel-test" }
+  const opts = {
+    messages, history: [], tools: [], model: "test-model", selection: { model: "test-model", effort: "high" },
+    instructions: "test instructions", workDir: workspace, account: null, userId: "cancel-test"
+  }
   const proc = new Proc("fake-agy", key, opts)
   proc.hasSentFirstTurn = true
   proc.sessionId = key + "-session"
@@ -42,15 +44,19 @@ function cancelledFixture(key) {
   const attempt = claimPromptAttempt(key)
   attempt.submitted = true
   settlePromptAttempt(attempt, null, { clientCancelled: true, proc })
-  proc.cancelledTurn = { attempt, requestMessagesHash: digest(stableJSON(messages)),
-    expectedMessagesHash: digest(stableJSON(proc.expectedMessages)) }
+  proc.cancelledTurn = {
+    attempt, requestMessagesHash: digest(stableJSON(messages)),
+    expectedMessagesHash: digest(stableJSON(proc.expectedMessages))
+  }
   pool.set(key, proc)
-  return { proc, attempt, opts, async cleanup() {
-    pool.delete(key)
-    releasePromptAttempt(attempt)
-    if (proc.turn) proc.finalizeTurn(proc.turn)
-    await proc.stop()
-  } }
+  return {
+    proc, attempt, opts, async cleanup() {
+      pool.delete(key)
+      releasePromptAttempt(attempt)
+      if (proc.turn) proc.finalizeTurn(proc.turn)
+      await proc.stop()
+    }
+  }
 }
 
 test("terminal cancellation records release their process when retired or moved on", async () => {
@@ -64,7 +70,7 @@ test("terminal cancellation records release their process when retired or moved 
         else if (action === "stop") await f.proc.stop()
         else {
           // Exercise real startTurn and finalization without an ACP child.
-          f.proc.conn = { notify() {}, close() {}, request: async () => ({ stopReason: "end_turn" }) }
+          f.proc.conn = { notify() { }, close() { }, request: async () => ({ stopReason: "end_turn" }) }
           const turn = f.proc.startTurn([{ type: "text", text: "next task" }],
             [...f.proc.expectedMessages, { role: "user", content: "next task" }], null, null)
           await turn.settled
@@ -95,7 +101,7 @@ test("a claimed cancellation continuation prevents competing acquisition from mu
     for (const changed of [{ tools: [{ name: "changed" }] }, { instructions: "changed" }]) {
       await assert.rejects(() => acquireProcLocked("fake-agy", f.proc.convKey,
         { ...f.opts, ...changed, ownerKey: f.proc.convKey, history: f.proc.expectedMessages }, false),
-      /continuing a cancelled response/)
+        /continuing a cancelled response/)
       assert.equal(updates, 0)
       assert.equal(f.proc.toolsSignature, "[]")
       assert.equal(f.proc.retiring, false)
@@ -123,9 +129,13 @@ test("response steps release old request bodies and snapshots while retaining us
   const f = responseFixture(body)
   try {
     for (let i = 0; i < 48; i++) {
-      const request = { ...body, messages: [...body.messages, { role: "user", content: [
-        { type: "image", source: { type: "base64", media_type: "image/png", data: "a".repeat(32_768) + i } },
-      ] }] }
+      const request = {
+        ...body, messages: [...body.messages, {
+          role: "user", content: [
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "a".repeat(32_768) + i } },
+          ]
+        }]
+      }
       const previous = f.turn.currentResponse
       const step = f.turn.registerResponse(request)
       if (previous) {
@@ -159,8 +169,10 @@ test("response steps release old request bodies and snapshots while retaining us
 })
 
 test("a settled current response keeps its snapshot and request options for a late prompt", () => {
-  const body = { system: "instructions ".repeat(100), tools: [{ name: "Read", input_schema: { type: "object" } }],
-    messages: [{ role: "user", content: "opening" }] }
+  const body = {
+    system: "instructions ".repeat(100), tools: [{ name: "Read", input_schema: { type: "object" } }],
+    messages: [{ role: "user", content: "opening" }]
+  }
   const f = responseFixture(body)
   try {
     const step = f.turn.registerResponse(body)
@@ -170,8 +182,10 @@ test("a settled current response keeps its snapshot and request options for a la
     f.turn.recordResponseUsage(step, responseUsage(f.proc, f.turn, step, content), false)
     const parts = [{ type: "text", text: "late result ".repeat(50) }]
     const number = f.turn.beginPrompt(parts, [{ id: "late-call" }])
-    const estimate = estimateInputTokens({ ...body, messages: [...body.messages,
-      { role: "assistant", content }, { role: "user", content: parts }] })
+    const estimate = estimateInputTokens({
+      ...body, messages: [...body.messages,
+      { role: "assistant", content }, { role: "user", content: parts }]
+    })
     assert.equal(f.turn.stepInputEstimates[1], estimate)
     assert.deepEqual(f.turn.pendingPromptStep, { estimateIndex: 1, promptNumbers: [number] })
     const next = f.turn.registerResponse(body)
@@ -198,8 +212,10 @@ for (const stream of [true, false]) {
       assert.deepEqual(step.contentSnapshot(), [{ type: "text", text: "open text block" }])
       const parts = [{ type: "text", text: "late input" }]
       f.turn.beginPrompt(parts, [{ id: "late" }])
-      assert.equal(f.turn.stepInputEstimates[0], estimateInputTokens({ ...body, messages: [...body.messages,
-        { role: "assistant", content: step.contentSnapshot() }, { role: "user", content: parts }] }))
+      assert.equal(f.turn.stepInputEstimates[0], estimateInputTokens({
+        ...body, messages: [...body.messages,
+        { role: "assistant", content: step.contentSnapshot() }, { role: "user", content: parts }]
+      }))
       f.turn.push({ type: "tool", call: { id: "tool-1", name: "Read", arguments: { path: "screen.png" } } })
       const first = await response
       const output = stream ? await first.text() : await first.json()
@@ -208,8 +224,10 @@ for (const stream of [true, false]) {
       else assert.equal(output.stop_reason, "tool_use")
       assert.equal(step.settled, true)
       assert.deepEqual(step.contentSnapshot().map(block => block.type), ["text", "tool_use"])
-      const continued = { ...body, messages: [...f.proc.expectedMessages,
-        { role: "user", content: [{ type: "tool_result", tool_use_id: "tool-1", content: "image read" }] }] }
+      const continued = {
+        ...body, messages: [...f.proc.expectedMessages,
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "tool-1", content: "image read" }] }]
+      }
       const nextResponse = streamResponse(f.proc, f.turn, continued)
       assert.equal(step.body, null)
       assert.equal(step.contentSnapshot, null)
@@ -254,17 +272,21 @@ test("tool-result history keys bound image bytes and preserve ordered content, e
   ]) assert.notEqual(key, historyKey(history("original", content)))
   assert.notEqual(key, historyKey(history("original", original.at(-1).content[0].content, true)))
   // Identity construction must not mutate the transmission payload.
-  assert.deepEqual(toolResult(original.at(-1).content[0]), { isError: false, content: [
-    { type: "text", text: "before" }, { type: "image", mimeType: "image/png", data: image.source.data }, { type: "text", text: "after" },
-  ] })
+  assert.deepEqual(toolResult(original.at(-1).content[0]), {
+    isError: false, content: [
+      { type: "text", text: "before" }, { type: "image", mimeType: "image/png", data: image.source.data }, { type: "text", text: "after" },
+    ]
+  })
   assert.equal(historyKey(history("original", [changedImage({ data: "a" })])).length,
     historyKey(history("original", [image])).length)
 })
 
 test("reclaimed routing is bounded, expires and rejects ambiguous or incompatible owners", () => {
-  const history = [{ role: "user", content: "opening" }, { role: "assistant", content: [
-    { type: "tool_use", id: "toolu_original", name: "Read", input: { path: "a.txt" } },
-  ] }]
+  const history = [{ role: "user", content: "opening" }, {
+    role: "assistant", content: [
+      { type: "tool_use", id: "toolu_original", name: "Read", input: { path: "a.txt" } },
+    ]
+  }]
   const opts = { account: "work", instructions: "instructions", workDir: "/work", history }
   const remember = key => rememberReclaimedRoute({ ...opts, convKey: key, expectedMessages: history })
   try {
@@ -418,8 +440,10 @@ test("pool pressure protects attached responses, accepted results, cancellation,
   const now = Date.now()
   const previous = process.env.AGY_BRIDGE_DETACHED_EVICT_MS
   process.env.AGY_BRIDGE_DETACHED_EVICT_MS = "30000"
-  const waiting = { attached: false, cancelRequested: false, clientProgressAt: now - 60_000,
-    lastProgressAt: now, hasPendingMcp: () => true }
+  const waiting = {
+    attached: false, cancelRequested: false, clientProgressAt: now - 60_000,
+    lastProgressAt: now, hasPendingMcp: () => true
+  }
   const protectedProcs = [
     { turn: { ...waiting, attached: true, deadlineAt: now - 1 } },
     { turn: { ...waiting, cancelRequested: true, deadlineAt: now - 1 } },
@@ -443,8 +467,10 @@ test("pool pressure protects attached responses, accepted results, cancellation,
 
 test("pool pressure evicts the least recently used idle process before detached turns", async () => {
   const stopped = []
-  const idle = (key, lastUsed) => ({ lastUsed, canPark: () => false, invalidateCancelledTurn: Proc.prototype.invalidateCancelledTurn,
-    stop: async () => { stopped.push(key) } })
+  const idle = (key, lastUsed) => ({
+    lastUsed, canPark: () => false, invalidateCancelledTurn: Proc.prototype.invalidateCancelledTurn,
+    stop: async () => { stopped.push(key) }
+  })
   try {
     pool.set("detached", { turn: { clientProgressAt: 0, hasPendingMcp: () => true } })
     pool.set("newer", idle("newer", 2))
@@ -461,11 +487,15 @@ test("detached eviction uses client progress despite fresh upstream traffic and 
   const now = Date.now()
   const stopped = []
   const waiting = (key, clientProgressAt, extra = {}) => {
-    const turn = { clientProgressAt, lastProgressAt: now, calls: [], hasPendingMcp: () => true,
-      fail(error) { this.error = error }, ...extra }
-    const proc = { convKey: key, turn,
+    const turn = {
+      clientProgressAt, lastProgressAt: now, calls: [], hasPendingMcp: () => true,
+      fail(error) { this.error = error }, ...extra
+    }
+    const proc = {
+      convKey: key, turn,
       abandonTurn(value) { assert.equal(value, turn); this.turn = null },
-      async stop() { stopped.push(key) } }
+      async stop() { stopped.push(key) }
+    }
     pool.set(key, proc)
     return proc
   }
@@ -519,7 +549,7 @@ test("prompt budget counts UTF-8 text and installed instructions, preserving com
   process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES = "12"
   try {
     const parts = [{ type: "text", text: "中文" }, { type: "image", data: "a".repeat(100), mimeType: "image/png" },
-      { type: "text", text: "stop" }]
+    { type: "text", text: "stop" }]
     const original = structuredClone(parts)
     assert.equal(validatePromptBudget(parts, "OK"), 12)
     assert.throws(() => validatePromptBudget(parts, "系统"), error =>
@@ -548,13 +578,15 @@ test("oversized replay omits historical tool-result bodies before failing", () =
   const previous = process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES
   process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES = "4000"
   try {
-    const body = { messages: [
-      { role: "user", content: "Read the file." },
-      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { path: "a.txt" } }] },
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "BIG".repeat(5000) }] },
-      { role: "assistant", content: "Done." },
-      { role: "user", content: "CURRENT-INSTRUCTION" },
-    ] }
+    const body = {
+      messages: [
+        { role: "user", content: "Read the file." },
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { path: "a.txt" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "BIG".repeat(5000) }] },
+        { role: "assistant", content: "Done." },
+        { role: "user", content: "CURRENT-INSTRUCTION" },
+      ]
+    }
     const text = parts => parts.map(part => part.text || "").join("")
     const replay = text(renderReplayPromptParts(body, null, true))
     assert(!replay.includes("BIGBIG"))
@@ -572,13 +604,15 @@ test("oversized replay omits historical tool-result bodies before failing", () =
 })
 
 test("replay below 1 MiB still fits AGY's user-input limit and keeps the current instruction", () => {
-  const body = { messages: [
-    { role: "user", content: "Read an old file." },
-    { role: "assistant", content: [{ type: "tool_use", id: "old", name: "Read", input: { path: "old.txt" } }] },
-    { role: "user", content: [{ type: "tool_result", tool_use_id: "old", content: "中".repeat(80_000) }] },
-    { role: "assistant", content: "Remembered." },
-    { role: "user", content: "CURRENT-INSTRUCTION-731" },
-  ] }
+  const body = {
+    messages: [
+      { role: "user", content: "Read an old file." },
+      { role: "assistant", content: [{ type: "tool_use", id: "old", name: "Read", input: { path: "old.txt" } }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "old", content: "中".repeat(80_000) }] },
+      { role: "assistant", content: "Remembered." },
+      { role: "user", content: "CURRENT-INSTRUCTION-731" },
+    ]
+  }
   const original = structuredClone(body)
   const text = renderReplayPromptParts(body, null, true).map(part => part.text || "").join("")
   assert(Buffer.byteLength(text) <= 180_000)
@@ -599,8 +633,12 @@ test("ACP user-input limit counts combined UTF-8 text and image labels separatel
     assert.throws(() => validateAcpPromptBudget([...parts, { type: "image", data: "aW1hZ2U=", mimeType: "image/png" }]), error =>
       error.code === "context_length_exceeded")
     assert.equal(validateAcpPromptBudget([{ type: "image", data: "a".repeat(500_000), mimeType: "image/png" }]), 0)
-    const compacted = { messages: [{ role: "user", content:
-      "This session is being continued from a previous conversation that ran out of context." }] }
+    const compacted = {
+      messages: [{
+        role: "user", content:
+          "This session is being continued from a previous conversation that ran out of context."
+      }]
+    }
     assert.throws(() => validateAcpPromptBudget([...parts, { type: "text", text: "x" }], "", compacted), error =>
       error.code === "prompt_budget_exceeded" && !/prompt is too long/i.test(error.message) &&
       /cannot raise this upstream limit/.test(error.message))
@@ -635,10 +673,12 @@ const historyPair = (id, input, content = "historical output") => [
 ]
 
 test("177 tools after an old compaction replay without dropping calls or the pending result", t => {
-  const body = { messages: [
-    { role: "user", content: compactionSummary + "summary facts ".repeat(1100) },
-    ...Array.from({ length: 177 }, (_, i) => historyPair(`tool-${i}`, { path: `file-${i}`, note: "a".repeat(440) }, "historical output ".repeat(60))).flat(),
-  ] }
+  const body = {
+    messages: [
+      { role: "user", content: compactionSummary + "summary facts ".repeat(1100) },
+      ...Array.from({ length: 177 }, (_, i) => historyPair(`tool-${i}`, { path: `file-${i}`, note: "a".repeat(440) }, "historical output ".repeat(60))).flat(),
+    ]
+  }
   body.messages.at(-1).content.push({ type: "text", text: "CURRENT-INSTRUCTION-731" })
   const original = structuredClone(body)
   const fullBytes = Buffer.byteLength(promptText(renderInitialPromptParts(body, null, true)))
@@ -664,8 +704,10 @@ test("old compaction markers no longer suppress recovery in either budget valida
   try {
     for (const content of [compactionSummary, [{ type: "text", text: compactionSummary }]]) {
       for (const following of [7, 8, 360]) {
-        const body = { messages: [{ role: "user", content },
-          ...Array.from({ length: following }, (_, i) => ({ role: i % 2 ? "user" : "assistant", content: "new context" }))] }
+        const body = {
+          messages: [{ role: "user", content },
+          ...Array.from({ length: following }, (_, i) => ({ role: i % 2 ? "user" : "assistant", content: "new context" }))]
+        }
         for (const [validate, bytes] of [[validatePromptBudget, 20], [validateAcpPromptBudget, 180_001]]) {
           assert.throws(() => validate([{ type: "text", text: "x".repeat(bytes) }], "", body), error =>
             error.code === (following < 8 ? "prompt_budget_exceeded" : "context_length_exceeded") &&
@@ -681,12 +723,16 @@ test("old compaction markers no longer suppress recovery in either budget valida
 
 test("compact server and MCP skeletons retain escaped arguments and error status", () => {
   const input = { query: '</tool_record> &amp; "雪"' }
-  const body = { messages: [{ role: "assistant", content: [
-    { type: "server_tool_use", id: 'server"<&', name: "web_search", input },
-    { type: "web_search_tool_result", tool_use_id: 'server"<&', content: { type: "web_search_tool_result_error" } },
-    { type: "mcp_tool_use", id: "mcp", name: "read", input },
-    { type: "mcp_tool_result", tool_use_id: "mcp", content: "payload", is_error: true },
-  ] }, { role: "user", content: "current" }] }
+  const body = {
+    messages: [{
+      role: "assistant", content: [
+        { type: "server_tool_use", id: 'server"<&', name: "web_search", input },
+        { type: "web_search_tool_result", tool_use_id: 'server"<&', content: { type: "web_search_tool_result_error" } },
+        { type: "mcp_tool_use", id: "mcp", name: "read", input },
+        { type: "mcp_tool_result", tool_use_id: "mcp", content: "payload", is_error: true },
+      ]
+    }, { role: "user", content: "current" }]
+  }
   const text = promptText(renderInitialPromptParts(body, null, true, true))
   assert.equal((text.match(/<tool_record /g) || []).length, 4)
   assert.equal((text.match(/is_error="true" body_omitted="true" \/>/g) || []).length, 2)
@@ -701,19 +747,25 @@ test("bounded replay keeps summaries, batched call ownership and complete curren
   const previous = process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES
   process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES = "100000"
   try {
-    const current = [{ role: "user", content: [
-      { type: "tool_result", tool_use_id: "pending-a", content: [{ type: "text", text: "CURRENT-RESULT <raw>&" }, image,
-        { type: "tool_reference", tool_name: "loaded_tool" }] },
-      { type: "tool_result", tool_use_id: "pending-b", content: "SECOND-RESULT" },
-      { type: "text", text: "Summarize this conversation so we can continue." },
-    ] }, { role: "developer", content: "Keep the latest instruction." }]
-    const body = { system: "system instructions ".repeat(1000), output_config: { format: { type: "json_object" } }, messages: [
-      { role: "user", content: compactionSummary + " PINNED-SUMMARY" },
-      ...Array.from({ length: 20 }, (_, i) => historyPair(`old-${i}`, { command: `command-${i}:` + "雪".repeat(4000) })).flat(),
-      // These adjacent assistant messages must stay together: both results are in current.
-      historyPair("pending-a", { path: "a" })[0], historyPair("pending-b", { path: "b" })[0],
-      ...current,
-    ] }
+    const current = [{
+      role: "user", content: [
+        {
+          type: "tool_result", tool_use_id: "pending-a", content: [{ type: "text", text: "CURRENT-RESULT <raw>&" }, image,
+          { type: "tool_reference", tool_name: "loaded_tool" }]
+        },
+        { type: "tool_result", tool_use_id: "pending-b", content: "SECOND-RESULT" },
+        { type: "text", text: "Summarize this conversation so we can continue." },
+      ]
+    }, { role: "developer", content: "Keep the latest instruction." }]
+    const body = {
+      system: "system instructions ".repeat(1000), output_config: { format: { type: "json_object" } }, messages: [
+        { role: "user", content: compactionSummary + " PINNED-SUMMARY" },
+        ...Array.from({ length: 20 }, (_, i) => historyPair(`old-${i}`, { command: `command-${i}:` + "雪".repeat(4000) })).flat(),
+        // These adjacent assistant messages must stay together: both results are in current.
+        historyPair("pending-a", { path: "a" })[0], historyPair("pending-b", { path: "b" })[0],
+        ...current,
+      ]
+    }
     const original = structuredClone(body)
     const currentParts = parts => {
       const index = parts.findIndex(part => part.type === "text" && part.text.includes("<current_turn>\n"))
@@ -745,14 +797,16 @@ test("bounded replay keeps summaries, batched call ownership and complete curren
 })
 
 test("bounded replay counts retained image labels when selecting the newest exchanges", () => {
-  const body = { messages: [
-    { role: "user", content: compactionSummary },
-    ...Array.from({ length: 20 }, (_, i) => [
-      { role: "assistant", content: `exchange-${i}` },
-      { role: "user", content: Array.from({ length: 10 }, () => image) },
-    ]).flat(),
-    { role: "assistant", content: "Ready." }, { role: "user", content: [image, { type: "text", text: "CURRENT" }] },
-  ] }
+  const body = {
+    messages: [
+      { role: "user", content: compactionSummary },
+      ...Array.from({ length: 20 }, (_, i) => [
+        { role: "assistant", content: `exchange-${i}` },
+        { role: "user", content: Array.from({ length: 10 }, () => image) },
+      ]).flat(),
+      { role: "assistant", content: "Ready." }, { role: "user", content: [image, { type: "text", text: "CURRENT" }] },
+    ]
+  }
   const parts = renderReplayPromptParts(body, null, true)
   const imageCount = parts.filter(part => part.type === "image").length
   assert(imageCount < 201 && imageCount > 1)
@@ -769,8 +823,10 @@ test("bounded replay pins a middle summary and never splits a historical paralle
     for (let i = 0; i < 12; i++) {
       const a = historyPair(`batch-${i}-a`, { command: "a".repeat(2000) })
       const b = historyPair(`batch-${i}-b`, { command: "b".repeat(2000) })
-      messages.push(a[0], b[0], { role: "user", content: [...a[1].content, ...b[1].content,
-        ...(i === 2 ? [{ type: "text", text: compactionSummary + " MIDDLE-SUMMARY" }] : [])] })
+      messages.push(a[0], b[0], {
+        role: "user", content: [...a[1].content, ...b[1].content,
+        ...(i === 2 ? [{ type: "text", text: compactionSummary + " MIDDLE-SUMMARY" }] : [])]
+      })
     }
     messages.push({ role: "assistant", content: "Ready." }, { role: "user", content: "CURRENT" })
     const body = { messages }
@@ -793,12 +849,14 @@ test("bounded replay pins a middle summary and never splits a historical paralle
 test("bounded replay rejects irreducible protected content without truncating it", () => {
   for (const oversized of ["summary", "current", "pending"]) {
     const huge = "雪".repeat(60_001)
-    const body = { messages: [
-      { role: "user", content: compactionSummary + (oversized === "summary" ? huge : "") },
-      ...historyPair("old", { path: "old" }),
-      historyPair("pending", { path: oversized === "pending" ? huge : "pending" })[0],
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "pending", content: oversized === "current" ? huge : "result" }] },
-    ] }
+    const body = {
+      messages: [
+        { role: "user", content: compactionSummary + (oversized === "summary" ? huge : "") },
+        ...historyPair("old", { path: "old" }),
+        historyPair("pending", { path: oversized === "pending" ? huge : "pending" })[0],
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "pending", content: oversized === "current" ? huge : "result" }] },
+      ]
+    }
     const original = structuredClone(body)
     const parts = renderReplayPromptParts(body, null, true)
     assert(promptText(parts).includes(huge))
@@ -808,15 +866,19 @@ test("bounded replay rejects irreducible protected content without truncating it
 })
 
 test("an abandoned historical call does not pin all subsequent exchanges during recovery", () => {
-  const body = { messages: [
-    { role: "user", content: compactionSummary },
-    historyPair("abandoned", { path: "interrupted" })[0],
-    { role: "user", content: "[Request interrupted by user]" },
-    ...Array.from({ length: 20 }, (_, i) => historyPair(`completed-${i}`, { command: "x".repeat(12_000) })).flat(),
-    historyPair("pending", { path: "current" })[0],
-    { role: "user", content: [{ type: "tool_result", tool_use_id: "pending", content: "CURRENT-RESULT" },
-      { type: "text", text: "Summarize this conversation." }] },
-  ] }
+  const body = {
+    messages: [
+      { role: "user", content: compactionSummary },
+      historyPair("abandoned", { path: "interrupted" })[0],
+      { role: "user", content: "[Request interrupted by user]" },
+      ...Array.from({ length: 20 }, (_, i) => historyPair(`completed-${i}`, { command: "x".repeat(12_000) })).flat(),
+      historyPair("pending", { path: "current" })[0],
+      {
+        role: "user", content: [{ type: "tool_result", tool_use_id: "pending", content: "CURRENT-RESULT" },
+        { type: "text", text: "Summarize this conversation." }]
+      },
+    ]
+  }
   const parts = renderReplayPromptParts(body, null, true)
   assert(validateAcpPromptBudget(parts, "", body) <= 180_000)
   const text = promptText(parts)
@@ -824,6 +886,26 @@ test("an abandoned historical call does not pin all subsequent exchanges during 
   assert(!text.includes('id="abandoned"') && !text.includes('id="completed-0"'))
   assert(text.includes('id="completed-19"') && text.includes('id="pending"'))
   assert(text.includes("CURRENT-RESULT") && text.includes("Summarize this conversation."))
+})
+
+test("bounded replay trims older messages in multi-user transcripts with no assistant turns", () => {
+  const body = {
+    messages: [
+      { role: "user", content: "OPENING-CONTEXT" },
+      ...Array.from({ length: 20 }, (_, i) => ({ role: "user", content: `entry-${i} ` + "x".repeat(12_000) })),
+      { role: "user", content: "LATEST-INSTRUCTION" },
+    ]
+  }
+  const original = structuredClone(body)
+  const parts = renderReplayPromptParts(body, null, true)
+  assert(validateAcpPromptBudget(parts, "", body) <= 180_000)
+  const text = promptText(parts)
+  assert(text.includes("older history messages omitted"))
+  assert(text.includes("OPENING-CONTEXT"))
+  assert(!text.includes("entry-0 "))
+  assert(text.includes("entry-19 "))
+  assert(text.includes("LATEST-INSTRUCTION"))
+  assert.deepEqual(body, original)
 })
 
 test("declared schema-less ToolSearch receives query and max_results parameters", () => {
@@ -837,8 +919,10 @@ test("declared schema-less ToolSearch receives query and max_results parameters"
 })
 
 test("deferred definitions survive normalization while tool_choice still limits exposure", () => {
-  const tools = [{ name: "ToolSearch" }, { name: "mcp__terminal__run_in_terminal", defer_loading: true,
-    input_schema: { type: "object", properties: { command: { anyOf: [{ type: "string" }, { type: "null" }] } } } }]
+  const tools = [{ name: "ToolSearch" }, {
+    name: "mcp__terminal__run_in_terminal", defer_loading: true,
+    input_schema: { type: "object", properties: { command: { anyOf: [{ type: "string" }, { type: "null" }] } } }
+  }]
   assert.deepEqual(normalizeTools({ tools }).map(tool => tool.name), tools.map(tool => tool.name))
   assert.equal(normalizeTools({ tools })[1].inputSchema.properties.command.type, "string")
   assert.deepEqual(normalizeTools({ tools, tool_choice: { type: "none" } }), [])
@@ -887,11 +971,13 @@ test("a partial ID rename maps by full history without discarding the live ID an
 })
 
 test("history replay keeps image bytes between their original surrounding text", () => {
-  const parts = renderInitialPromptParts({ messages: [
-    { role: "user", content: [{ type: "text", text: "before first image" }, image, { type: "text", text: "after first image" }] },
-    { role: "assistant", content: "old reply" },
-    { role: "user", content: "current question" },
-  ] }, null, true)
+  const parts = renderInitialPromptParts({
+    messages: [
+      { role: "user", content: [{ type: "text", text: "before first image" }, image, { type: "text", text: "after first image" }] },
+      { role: "assistant", content: "old reply" },
+      { role: "user", content: "current question" },
+    ]
+  }, null, true)
   assert.deepEqual(parts.map(part => part.type), ["text", "image", "text"])
   assert.ok(parts[0].text.endsWith("Human: before first image"))
   assert.ok(parts[2].text.startsWith("after first image\nAssistant: old reply"))
@@ -954,14 +1040,20 @@ test("long history opens every call/result with one boundary caveat and escapes 
 })
 
 test("historical result images and tool references stay ordered inside the escaped record", () => withStripToolRecords(undefined, () => {
-  const parts = renderInitialPromptParts({ messages: [
-    { role: "assistant", content: [{ type: "tool_use", id: "read", name: "Read", input: {} }] },
-    { role: "user", content: [{ type: "tool_result", tool_use_id: "read", content: [
-      { type: "text", text: "before <image>" }, image,
-      { type: "tool_reference", tool_name: "mcp__read<&" }, { type: "text", text: " after image" },
-    ] }] },
-    { role: "assistant", content: "old answer" }, { role: "user", content: "new question" },
-  ] }, null, true)
+  const parts = renderInitialPromptParts({
+    messages: [
+      { role: "assistant", content: [{ type: "tool_use", id: "read", name: "Read", input: {} }] },
+      {
+        role: "user", content: [{
+          type: "tool_result", tool_use_id: "read", content: [
+            { type: "text", text: "before <image>" }, image,
+            { type: "tool_reference", tool_name: "mcp__read<&" }, { type: "text", text: " after image" },
+          ]
+        }]
+      },
+      { role: "assistant", content: "old answer" }, { role: "user", content: "new question" },
+    ]
+  }, null, true)
   assert.deepEqual(parts.map(part => part.type), ["text", "image", "text"])
   assert.ok(parts[0].text.endsWith("before &lt;image&gt;"))
   assert.deepEqual(parts[1], { type: "image", data: image.source.data, mimeType: "image/png" })
@@ -970,19 +1062,25 @@ test("historical result images and tool references stay ordered inside the escap
 }))
 
 test("strict replay omits historical bodies but preserves live results, images, and references", () => withStripToolRecords("1", () => {
-  const oldResult = { type: "tool_result", tool_use_id: "old", is_error: true, content: [
-    { type: "text", text: "HISTORICAL_PAYLOAD" }, image, { type: "tool_reference", tool_name: "old_tool" },
-  ] }
-  const liveResult = { type: "tool_result", tool_use_id: "live", content: [
-    { type: "text", text: "LIVE <raw>& payload" }, image, { type: "tool_reference", tool_name: "live_tool" },
-  ] }
+  const oldResult = {
+    type: "tool_result", tool_use_id: "old", is_error: true, content: [
+      { type: "text", text: "HISTORICAL_PAYLOAD" }, image, { type: "tool_reference", tool_name: "old_tool" },
+    ]
+  }
+  const liveResult = {
+    type: "tool_result", tool_use_id: "live", content: [
+      { type: "text", text: "LIVE <raw>& payload" }, image, { type: "tool_reference", tool_name: "live_tool" },
+    ]
+  }
   const current = [{ role: "user", content: "current preface" }, { role: "user", content: [liveResult] }]
-  const body = { messages: [
-    { role: "assistant", content: [{ type: "tool_use", id: "old", name: "Read", input: { path: "keep-call-args" } }] },
-    { role: "user", content: [oldResult, { type: "text", text: "keep-user-prose" }] },
-    { role: "assistant", content: [{ type: "tool_use", id: "live", name: "Read", input: {} }] },
-    ...current,
-  ] }
+  const body = {
+    messages: [
+      { role: "assistant", content: [{ type: "tool_use", id: "old", name: "Read", input: { path: "keep-call-args" } }] },
+      { role: "user", content: [oldResult, { type: "text", text: "keep-user-prose" }] },
+      { role: "assistant", content: [{ type: "tool_use", id: "live", name: "Read", input: {} }] },
+      ...current,
+    ]
+  }
   const text = promptText(renderInitialPromptParts(body, null, true))
   const [history, live] = text.split("<current_turn>\n")
   assert.ok(history.includes('id="old" is_error="true"'))
@@ -1003,21 +1101,25 @@ test("strict replay omits historical bodies but preserves live results, images, 
 }))
 
 test("strict fresh replay recovery preserves current results beside queued user text", () => {
-  const resultBlock = { type: "tool_result", tool_use_id: "recovered", content: [
-    { type: "text", text: "RECOVERED_RESULT <raw>&\nfull body" }, image,
-    { type: "tool_reference", tool_name: "recovered_tool" },
-  ] }
+  const resultBlock = {
+    type: "tool_result", tool_use_id: "recovered", content: [
+      { type: "text", text: "RECOVERED_RESULT <raw>&\nfull body" }, image,
+      { type: "tool_reference", tool_name: "recovered_tool" },
+    ]
+  }
   const queued = { type: "text", text: "<system-reminder>\nThe user sent a new message while you were working:\nUse the recovered result to finish.\n\nPlease address this message and continue with your tasks.\n</system-reminder>" }
   for (const layout of ["inline", "system", "developer"]) {
     const current = layout === "inline"
       ? [{ role: "user", content: [resultBlock, queued] }]
       : [{ role: "user", content: [resultBlock] }, { role: layout, content: [queued] }]
-    const body = { messages: [
-      { role: "assistant", content: [{ type: "tool_use", id: "old", name: "Read", input: {} }] },
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "old", content: "OLD_BODY_TO_OMIT" }] },
-      { role: "assistant", content: [{ type: "tool_use", id: "recovered", name: "Read", input: {} }] },
-      ...current,
-    ] }
+    const body = {
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "old", name: "Read", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "old", content: "OLD_BODY_TO_OMIT" }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "recovered", name: "Read", input: {} }] },
+        ...current,
+      ]
+    }
     for (const instructionsInSession of [false, true]) {
       const render = setting => withStripToolRecords(setting, () => renderInitialPromptParts(body, null, instructionsInSession))
       const complete = render(undefined)
@@ -1044,15 +1146,19 @@ test("strict fresh replay recovery preserves current results beside queued user 
 })
 
 test("server and MCP historical records use the same boundaries and optional omission", () => {
-  const body = { messages: [
-    { role: "assistant", content: [
-      { type: "server_tool_use", id: "server", name: "web_search", input: { query: "<query>" } },
-      { type: "web_search_tool_result", tool_use_id: "server", content: [{ url: "https://example.com/?a=1&b=2" }] },
-      { type: "mcp_tool_use", id: "mcp", name: "read", input: {} },
-      { type: "mcp_tool_result", tool_use_id: "mcp", content: "MCP_PAYLOAD" },
-    ] },
-    { role: "user", content: "current question" },
-  ] }
+  const body = {
+    messages: [
+      {
+        role: "assistant", content: [
+          { type: "server_tool_use", id: "server", name: "web_search", input: { query: "<query>" } },
+          { type: "web_search_tool_result", tool_use_id: "server", content: [{ url: "https://example.com/?a=1&b=2" }] },
+          { type: "mcp_tool_use", id: "mcp", name: "read", input: {} },
+          { type: "mcp_tool_result", tool_use_id: "mcp", content: "MCP_PAYLOAD" },
+        ]
+      },
+      { role: "user", content: "current question" },
+    ]
+  }
   for (const setting of [undefined, "1"]) withStripToolRecords(setting, () => {
     const text = promptText(renderInitialPromptParts(body, null, true))
     assert.equal((text.match(/<tool_record /g) || []).length, 4)
@@ -1063,14 +1169,18 @@ test("server and MCP historical records use the same boundaries and optional omi
 })
 
 test("strict historical server results retain failures encoded inside their content", () => withStripToolRecords("1", () => {
-  const text = promptText(renderInitialPromptParts({ messages: [
-    { role: "assistant", content: [
-      { type: "web_search_tool_result", tool_use_id: "failed-search", content: { type: "web_search_tool_result_error", error_code: "max_uses_exceeded" } },
-      { type: "web_fetch_tool_result", tool_use_id: "failed-fetch", content: { type: "web_fetch_tool_result_error", error_code: "url_not_allowed" } },
-      { type: "web_search_tool_result", tool_use_id: "successful-search", content: [{ type: "web_search_result", title: "Found" }] },
-    ] },
-    { role: "user", content: "Which tools failed?" },
-  ] }, null, true))
+  const text = promptText(renderInitialPromptParts({
+    messages: [
+      {
+        role: "assistant", content: [
+          { type: "web_search_tool_result", tool_use_id: "failed-search", content: { type: "web_search_tool_result_error", error_code: "max_uses_exceeded" } },
+          { type: "web_fetch_tool_result", tool_use_id: "failed-fetch", content: { type: "web_fetch_tool_result_error", error_code: "url_not_allowed" } },
+          { type: "web_search_tool_result", tool_use_id: "successful-search", content: [{ type: "web_search_result", title: "Found" }] },
+        ]
+      },
+      { role: "user", content: "Which tools failed?" },
+    ]
+  }, null, true))
   assert.match(text, /id="failed-search" is_error="true"/)
   assert.match(text, /id="failed-fetch" is_error="true"/)
   assert.match(text, /id="successful-search" is_error="false"/)
@@ -1082,17 +1192,21 @@ test("compaction request with a pending question is framed as summary-only", () 
     { role: "user", content: "Remember the codename HERON-7." },
     { role: "assistant", content: "Noted: HERON-7." },
   ]
-  const compact = promptText(renderInitialPromptParts({ messages: [...history,
+  const compact = promptText(renderInitialPromptParts({
+    messages: [...history,
     { role: "user", content: "What is 17 times 23?\n\nYour task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests." },
-  ] }, null, true))
+    ]
+  }, null, true))
   assert.ok(!compact.includes("Answer the current turn"))
   assert.match(compact, /<\/conversation_history>\nSummarize this conversation as the current turn asks;/)
   assert.match(compact, /<\/current_turn>\n\[This turn is a context-compaction request\./)
   assert.ok(compact.includes("What is 17 times 23?"))
 
-  const normal = promptText(renderInitialPromptParts({ messages: [...history,
+  const normal = promptText(renderInitialPromptParts({
+    messages: [...history,
     { role: "user", content: "What is 17 times 23?" },
-  ] }, null, true))
+    ]
+  }, null, true))
   assert.match(normal, /<\/conversation_history>\nAnswer the current turn;/)
   assert.ok(!normal.includes("context-compaction request"))
   assert.ok(normal.endsWith("</current_turn>"))
@@ -1221,7 +1335,7 @@ test("execOnce still collects synchronous and asynchronous spawn failures", asyn
 test("issue49 replay keeps the real user task through later tool-only and meta groups", () => {
   const task = "ISSUE49 current task: build the feature"
   const messages = [{ role: "user", content: "opening context" },
-    { role: "assistant", content: "old answer" }, { role: "user", content: task }]
+  { role: "assistant", content: "old answer" }, { role: "user", content: task }]
   for (let i = 0; i < 20; i++) {
     const pair = historyPair(`issue49-${i}`, { command: "x".repeat(12000) })
     if (i === 18) pair[1].content.push({ type: "text", text: "<system-reminder>metadata only</system-reminder>" })

@@ -237,7 +237,7 @@ function findAgy() {
     try {
       fs.accessSync(cachedAgyPath, fs.constants.X_OK)
       return cachedAgyPath
-    } catch {}
+    } catch { }
   }
   cachedAgyPath = null
   cachedAgyUnlocked = false
@@ -250,7 +250,7 @@ function findAgy() {
       cachedAgyUnlocked = selected.unlocked
       cachedAgyPath = selected.path
       return cachedAgyPath
-    } catch {}
+    } catch { }
   }
   return null
 }
@@ -279,7 +279,7 @@ function execOnce(file, args, opts = {}) {
     let timedOut = false
     const timer = setTimeout(() => {
       timedOut = true
-      try { child.kill("SIGKILL") } catch {}
+      try { child.kill("SIGKILL") } catch { }
     }, opts.timeoutMs ?? 30_000)
     child.stdout.on("data", (data) => { stdout += data })
     child.stderr.on("data", (data) => { stderr += data })
@@ -342,7 +342,7 @@ function offeredKey(agyPath, account) {
 function offeredModelsFromSession(session) {
   const options = configSelect(Array.isArray(session?.configOptions) ? session.configOptions : [], "model")
   return [...selectValues(options?.options).map(x => ({ id: x.value, name: x.name || x.value })),
-    ...(session?.models?.availableModels || []).map(x => ({ id: x.modelId || x.id, name: x.name }))]
+  ...(session?.models?.availableModels || []).map(x => ({ id: x.modelId || x.id, name: x.name }))]
     .filter(x => typeof x.id === "string" && x.id)
 }
 
@@ -400,30 +400,32 @@ async function runOfferedProbe(agyPath, account) {
   try {
     workspace = await fs.promises.mkdtemp(path.join(os.tmpdir(), "agy-model-probe-"))
     const args = ["acp", ...(account.dir ? [`--gemini_dir=${account.dir}`] : [])]
-    child = spawnAgy(agyPath, args, { cwd: workspace, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32",
-      env: { ...accountEnv({ ...process.env }, account.dir), AGY_CLI_DISABLE_AUTO_UPDATE: "true" } })
+    child = spawnAgy(agyPath, args, {
+      cwd: workspace, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32",
+      env: { ...accountEnv({ ...process.env }, account.dir), AGY_CLI_DISABLE_AUTO_UPDATE: "true" }
+    })
     child.stderr?.resume()
-    child.stdin?.on("error", () => {})
+    child.stdin?.on("error", () => { })
     child.on("error", error => conn?.close(error))
     child.on("close", () => conn?.close(new Error("agy model probe exited")))
-    conn = new AcpConnection(child, { onNotification: () => {}, onRequest: async () => { throw Object.assign(new Error("not supported"), { code: -32601 }) }, onProtocolError: error => conn.close(error) })
+    conn = new AcpConnection(child, { onNotification: () => { }, onRequest: async () => { throw Object.assign(new Error("not supported"), { code: -32601 }) }, onProtocolError: error => conn.close(error) })
     const init = await conn.request("initialize", { protocolVersion: 1, clientInfo: ACP_CLIENT_INFO, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } }, MODEL_PROBE_STEP_MS)
     if (agyTooOld(init?.agentInfo?.version)) return null
     const session = await conn.request("session/new", { cwd: wslPath(workspace, wslDistro()), mcpServers: [] }, MODEL_PROBE_STEP_MS)
     const canClose = init?.agentCapabilities?.sessionCapabilities?.close ?? init?.agentCapabilities?.session_capabilities?.close
-    if (session?.sessionId && canClose) await conn.request("session/close", { sessionId: session.sessionId }, 1000).catch(() => {})
+    if (session?.sessionId && canClose) await conn.request("session/close", { sessionId: session.sessionId }, 1000).catch(() => { })
     const models = offeredModelsFromSession(session)
     return models.length ? models : null
   } catch {
     return null
   } finally {
     conn?.close(new Error("model probe complete"))
-    try { child?.stdin?.end() } catch {}
+    try { child?.stdin?.end() } catch { }
     if (child?.pid) {
-      if (process.platform === "win32") await execOnce("taskkill", ["/T", "/F", "/PID", String(child.pid)], { timeoutMs: 3000 }).catch(() => {})
-      else try { process.kill(-child.pid, "SIGTERM") } catch { try { child.kill("SIGTERM") } catch {} }
+      if (process.platform === "win32") await execOnce("taskkill", ["/T", "/F", "/PID", String(child.pid)], { timeoutMs: 3000 }).catch(() => { })
+      else try { process.kill(-child.pid, "SIGTERM") } catch { try { child.kill("SIGTERM") } catch { } }
     }
-    if (workspace) await fs.promises.rm(workspace, { recursive: true, force: true }).catch(() => {})
+    if (workspace) await fs.promises.rm(workspace, { recursive: true, force: true }).catch(() => { })
   }
 }
 
@@ -528,7 +530,7 @@ function requestedEffort(body) {
   const thinking = body.thinking?.type
   if (thinking === "disabled") return ""
   const generic = [body.reasoning_effort, body.reasoningEffort, body.reasoning?.effort,
-    body.generationConfig?.thinkingConfig?.thinkingLevel].map(normalizeEffort).find(Boolean)
+  body.generationConfig?.thinkingConfig?.thinkingLevel].map(normalizeEffort).find(Boolean)
   if (generic) return generic
   if (thinking !== "enabled" && thinking !== "adaptive") return ""
   const direct = normalizeEffort(body.output_config?.effort)
@@ -907,7 +909,7 @@ class AcpConnection {
       this.handlers.onProtocolError(new Error("agy emitted an ACP message larger than 64 MiB"))
       return
     }
-    for (;;) {
+    for (; ;) {
       const newline = this.buffer.indexOf("\n")
       if (newline < 0) return
       const line = this.buffer.slice(0, newline).trim()
@@ -1296,7 +1298,7 @@ class Turn {
         (waitingForTools
           ? "Check the client tool execution; AGY_BRIDGE_TOOL_TIMEOUT_MS controls this limit. "
           : "agy/ACP may be stalled or retrying upstream. Check agy connectivity/model availability, choose another route, " +
-            "or increase AGY_BRIDGE_TURN_TIMEOUT_MS for intentionally slow models. ") +
+          "or increase AGY_BRIDGE_TURN_TIMEOUT_MS for intentionally slow models. ") +
         (this.promptSubmitted
           ? "The prompt was submitted and its outcome is unknown; automatic retry is unsafe."
           : "No prompt was submitted; retry is safe."),
@@ -1480,7 +1482,7 @@ class Proc {
     this.child.stderr.on("data", (data) => {
       this.stderrTail = (this.stderrTail + data).slice(-STDERR_TAIL)
     })
-    this.child.stdin.on("error", () => {})
+    this.child.stdin.on("error", () => { })
     this.conn = new AcpConnection(this.child, {
       onNotification: (method, params) => this.#onNotification(method, params),
       onRequest: (method, params) => this.#onRequest(method, params),
@@ -1707,7 +1709,7 @@ class Proc {
 
   #notifyToolsChanged() {
     for (const socket of this.watchers) {
-      try { socket.write(JSON.stringify({ event: "tools_changed" }) + "\n") } catch {}
+      try { socket.write(JSON.stringify({ event: "tools_changed" }) + "\n") } catch { }
     }
   }
 
@@ -1809,7 +1811,7 @@ class Proc {
     this.expectedMessages = messages.map((message) => ({ ...message }))
     this.historyInvalid = false
     this.lastUsed = Date.now()
-    this.#runTurn(turn, content, model, selection).catch(() => {})
+    this.#runTurn(turn, content, model, selection).catch(() => { })
     return turn
   }
 
@@ -1910,7 +1912,7 @@ class Proc {
       this.unsentPrompt = null
       let usage = null
       let lateCalls = null
-      for (;;) {
+      for (; ;) {
         turn.logOffset = await fileSize(this.logPath)
         // A cancel that arrived before the prompt would be ignored by agy.
         if (turn.refusedDetail) throw this.#formatAgentError(turn.refusedDetail, turn.promptGuardMatched)
@@ -2097,7 +2099,7 @@ class Proc {
       }
       turn.fail(error)
       dropFromPool(this)
-      await this.stop().catch(() => {})
+      await this.stop().catch(() => { })
     } finally {
       turn.promptInFlight = false
       clearTimeout(turn.timer)
@@ -2131,9 +2133,9 @@ class Proc {
     const classification = classifyUpstreamError(detail, { promptGuardMatched })
     const kind = classification.category === "forbidden" ? "permission_error"
       : classification.category === "request_rejected" ? "invalid_request_error"
-      : ["quota_exhausted", "model_capacity", "rate_limit", "prompt_rejected"].includes(classification.category)
-        ? "rate_limit_error"
-        : "api_error"
+        : ["quota_exhausted", "model_capacity", "rate_limit", "prompt_rejected"].includes(classification.category)
+          ? "rate_limit_error"
+          : "api_error"
     return new AgentTurnError(classification.message, kind, classification)
   }
 
@@ -2162,7 +2164,7 @@ class Proc {
     const timer = setTimeout(() => {
       if (!turn.finalized) {
         dropFromPool(this)
-        this.stop().catch(() => {})
+        this.stop().catch(() => { })
       }
     }, CANCEL_SETTLE_MS)
     timer.unref?.()
@@ -2174,7 +2176,7 @@ class Proc {
     if (this.turn !== turn || turn.done) return
     turn.fail(error)
     dropFromPool(this)
-    this.stop().catch(() => {})
+    this.stop().catch(() => { })
     // Stop active tool resources even without an HTTP reader. Keep failed tool
     // IDs until the client consumes the error (or fail's bounded cleanup runs),
     // so a late result finds this failure instead of replaying an uncertain turn.
@@ -2203,7 +2205,7 @@ class Proc {
     const timer = setTimeout(() => {
       if (this.turn === turn && !turn.finalized && !this.dead) {
         dropFromPool(this)
-        this.stop().catch(() => {})
+        this.stop().catch(() => { })
       }
     }, CANCEL_SETTLE_MS)
     timer.unref?.()
@@ -2255,10 +2257,10 @@ class Proc {
       if (!call.mcpResponded && !this.stopping) {
         turn.fail(new Error(`agy bridge: MCP helper disconnected during ${name}`))
         dropFromPool(this)
-        this.stop().catch(() => {})
+        this.stop().catch(() => { })
       }
     })
-    call.deadline = setTimeout(() => { this.#deferCall(turn, call).catch(() => {}) }, ideCallDeadline())
+    call.deadline = setTimeout(() => { this.#deferCall(turn, call).catch(() => { }) }, ideCallDeadline())
     call.deadline.unref?.()
     turn.push({ type: "tool", call })
     turn.arm()
@@ -2282,13 +2284,13 @@ class Proc {
   #capSelfPoll(turn, target, reply) {
     reply({ content: [{ type: "text", text: SELF_POLL_NOTE }], isError: true })
     logBridgeEvent(this, turn, "reclaim", "self_poll_cap", {}, { self_poll_repeats: target.stillRunning })
-    reclaimStaleTurn(this, turn, SELF_POLL_NOTE).catch(() => {})
+    reclaimStaleTurn(this, turn, SELF_POLL_NOTE).catch(() => { })
   }
 
   // A repeat waits for the original result, without renewing the client clock.
   #acceptWait(turn, target, socket) {
     const reply = (result) => {
-      try { socket.end(JSON.stringify({ result }) + "\n") } catch {}
+      try { socket.end(JSON.stringify({ result }) + "\n") } catch { }
     }
     if (target.result) {
       target.lateDelivered = true
@@ -2407,9 +2409,10 @@ class Proc {
         // Results AGY stopped waiting for must accompany the new instruction.
         const late = turn.calls.filter(call => call.deferred && !call.lateDelivered &&
           !turn.awaitCalls.some(waiter => waiter.target === call)).map(call => ({
-          ...call, result: results.find(item => item.call === call)?.result || call.result,
-        }))
-        const messages = trailingMessages(body).messages.map(message => ({ ...message,
+            ...call, result: results.find(item => item.call === call)?.result || call.result,
+          }))
+        const messages = trailingMessages(body).messages.map(message => ({
+          ...message,
           content: Array.isArray(message.content)
             ? message.content.filter(block => block?.type !== "tool_result") : message.content,
         }))
@@ -2491,7 +2494,7 @@ class Proc {
           pending.error = error
           turn.fail(error)
           dropFromPool(this)
-          this.stop().catch(() => {})
+          this.stop().catch(() => { })
         })
         // Register the prompt before releasing tools so a completed MCP call
         // cannot finish the old response ahead of the steering acknowledgement.
@@ -2582,7 +2585,7 @@ class Proc {
       this.turn = null
       if (this.compaction) {
         dropFromPool(this)
-        this.stop().catch(() => {})
+        this.stop().catch(() => { })
       } else if (!this.stopping && !this.retiring) park(this)
     }
   }
@@ -2643,25 +2646,25 @@ class Proc {
     this.watchers.clear()
     const child = this.child
     if (child) {
-      try { child.stdin?.end() } catch {}
+      try { child.stdin?.end() } catch { }
       const alive = () => child.exitCode === null && child.signalCode === null
       if (alive()) {
-        const closed = once(child, "close").catch(() => {})
+        const closed = once(child, "close").catch(() => { })
         if (process.platform === "win32" && child.pid) {
           await execOnce("taskkill", ["/T", "/F", "/PID", String(child.pid)], { timeoutMs: 3_000 })
         } else {
-          try { process.kill(-child.pid, "SIGTERM") } catch { try { child.kill("SIGTERM") } catch {} }
+          try { process.kill(-child.pid, "SIGTERM") } catch { try { child.kill("SIGTERM") } catch { } }
           await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 3_000))])
         }
         if (alive()) {
-          try { child.kill("SIGKILL") } catch {}
+          try { child.kill("SIGKILL") } catch { }
           await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 1_000))])
         }
       }
       // The ACP parent may exit before its MCP helper; kill remaining members
       // of our private process group as well. Never target a user's agy group.
       if (process.platform !== "win32" && child.pid) {
-        try { process.kill(-child.pid, "SIGKILL") } catch {}
+        try { process.kill(-child.pid, "SIGKILL") } catch { }
       }
     }
     this.child = null
@@ -2867,7 +2870,7 @@ function withStateLock(file, fn) {
               }
             }
           }
-        } catch {}
+        } catch { }
         Atomics.wait(waitBuf, 0, 0, 5)
       }
     }
@@ -2875,8 +2878,8 @@ function withStateLock(file, fn) {
     return fn()
   } finally {
     if (fd !== null) {
-      try { fs.closeSync(fd) } catch {}
-      try { fs.unlinkSync(lock) } catch {}
+      try { fs.closeSync(fd) } catch { }
+      try { fs.unlinkSync(lock) } catch { }
     }
   }
 }
@@ -2898,7 +2901,7 @@ function saveParked() {
       fs.renameSync(temp, file)
       unparked.clear()
     })
-  } catch {}
+  } catch { }
 }
 
 function unpark(convKey) {
@@ -2944,7 +2947,7 @@ function peekParked(convKey, opts) {
   if (entry.historyHash === digest(historyKey(opts.history))) return entry
   const ids = toolUseIdentitiesKey(opts.history)
   if (ids == null || entry.toolUseIdentitiesHash !== digest(ids) ||
-      entry.historyHashSansInputs !== digest(historyKey(stripToolUseInputs(opts.history)))) return null
+    entry.historyHashSansInputs !== digest(historyKey(stripToolUseInputs(opts.history)))) return null
   return entry
 }
 
@@ -2984,7 +2987,7 @@ async function retire(key, proc) {
   proc.continuingCancel = false
   park(proc)
   if (pool.get(key) === proc) pool.delete(key)
-  await proc.stop().catch(() => {})
+  await proc.stop().catch(() => { })
 }
 
 async function evictIdle() {
@@ -3012,12 +3015,15 @@ function originalIdHistoryKey(history) {
   const assistant = history.slice(split)
   const calls = lastAssistantCalls(assistant)
   if (!calls.length || calls.some(call => !call.id)) return null
-  const stripped = assistant.map(message => ({ ...message,
+  const stripped = assistant.map(message => ({
+    ...message,
     content: Array.isArray(message.content) ? message.content.map(block => block?.type === "tool_use"
       ? { type: "tool_use", id: block.id, name: block.name, input: {} } : block) : message.content,
   }))
-  return stableJSON({ base: historyKey(history.slice(0, split)),
-    calls: calls.map(call => ({ id: call.id, name: call.name })), assistant: historyKey(stripped) })
+  return stableJSON({
+    base: historyKey(history.slice(0, split)),
+    calls: calls.map(call => ({ id: call.id, name: call.name })), assistant: historyKey(stripped)
+  })
 }
 
 function reclaimedRouteHash(convKey, opts, history = opts.history, originalIds = false) {
@@ -3090,7 +3096,7 @@ async function evictLRU() {
   return true
 }
 
-setInterval(() => { evictIdle().catch(() => {}) }, 60_000).unref()
+setInterval(() => { evictIdle().catch(() => { }) }, 60_000).unref()
 
 const acquireLocks = new Map()
 
@@ -3272,11 +3278,11 @@ async function acquireProcLocked(agyPath, convKey, opts, isFreshConversation, fo
     opts.validateReplay?.()
     opts.replayReason ||= existing.dead ? "process_dead"
       : existing.workDir !== opts.workDir ? "work_dir_changed"
-      : !sameInstructions(existing.instructions, opts.instructions) ? "instructions_changed" : "history_changed"
+        : !sameInstructions(existing.instructions, opts.instructions) ? "instructions_changed" : "history_changed"
     logBridgeEvent(existing, existing.turn, "replay", opts.replayReason)
     existing.retiring = true
     dropFromPool(existing)
-    await existing.stop().catch(() => {})
+    await existing.stop().catch(() => { })
   }
   const limit = maxProcs()
   while (allProcs.size >= limit) {
@@ -3290,7 +3296,7 @@ async function acquireProcLocked(agyPath, convKey, opts, isFreshConversation, fo
     await proc.start()
   } catch (error) {
     restoreParked(resume)
-    await proc.stop().catch(() => {})
+    await proc.stop().catch(() => { })
     throw error
   }
   commitParked(resume)
@@ -3320,7 +3326,7 @@ function logBridgeEvent(proc, turn, action, reason, meta = {}, extra = {}) {
     self_poll_repeats: turn?.calls.reduce((max, call) => Math.max(max, call.stillRunning || 0), 0),
     ...(meta.layout ? { layout: meta.layout, nonstream: meta.nonstream } : {}), ...extra,
   }
-  try { process.stderr.write("[agy-bridge] " + JSON.stringify(row) + "\n") } catch {}
+  try { process.stderr.write("[agy-bridge] " + JSON.stringify(row) + "\n") } catch { }
 }
 
 function staleTurnVerdict(proc, turn, now = Date.now()) {
@@ -3361,7 +3367,8 @@ function lineageVerdict(proc, turn, opts) {
   // A renamed call with edited arguments still belongs to the old response.
   // Keep upstream's 409 and its live owner intact rather than replaying it as
   // a sibling conversation just because its inputs no longer compare equal.
-  const withoutInputs = (messages) => messages.map((message) => ({ ...message,
+  const withoutInputs = (messages) => messages.map((message) => ({
+    ...message,
     content: Array.isArray(message.content) ? message.content.map((block) =>
       block?.type === "tool_use" ? { ...block, input: {} } : block) : message.content,
   }))
@@ -3419,7 +3426,7 @@ async function reclaimStaleTurn(proc, turn, note = "agy bridge: stale tool turn 
   proc.abandonTurn(turn)
   let timer
   try {
-    await Promise.race([proc.stop().catch(() => {}), new Promise((resolve) => {
+    await Promise.race([proc.stop().catch(() => { }), new Promise((resolve) => {
       timer = setTimeout(resolve, RECLAIM_STOP_TIMEOUT_MS)
       timer.unref?.()
     })])
@@ -4169,7 +4176,7 @@ async function settlePendingCancelledAttempt(key, convKey, messages, signal) {
       if (proc) {
         dropFromPool(proc)
         proc.abandonTurn(turn)
-        proc.stop().catch(() => {})
+        proc.stop().catch(() => { })
       }
       settlePromptAttempt(existing)
     }
@@ -4659,28 +4666,55 @@ function renderReplayPromptParts(body, callerWorkDir, instructionsInSession, ins
   const groups = replayHistoryGroups(history, current)
   const taskGroup = groups.findLastIndex(group => group.some(isReplayUserTask))
   const removable = groups.filter((group, i) => i > 0 && i < groups.length - 1 && i !== taskGroup && !group.some(isCompactionSummary))
-  if (!removable.length) return stripped
-  const window = count => {
-    const dropped = new Set(removable.slice(0, count))
-    const history = groups.filter(group => !dropped.has(group)).flat()
-    const omittedMessages = removable.slice(0, count).reduce((sum, group) => sum + group.length, 0)
-    return mergePromptParts(renderInitialPromptParts(body, callerWorkDir, instructionsInSession, true,
-      { history, omittedMessages }), reminder)
-  }
-  let best = window(removable.length)
-  if (!fits(best)) return stripped // Protected content alone cannot fit; validation will reject it.
   // Find the smallest omitted prefix without repeatedly rendering every suffix.
-  let low = 1
-  let high = removable.length
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2)
-    const candidate = window(mid)
-    if (fits(candidate)) {
-      best = candidate
-      high = mid
-    } else low = mid + 1
+  const bisect = (max, render) => {
+    let best = render(max)
+    if (!fits(best)) return null
+    let low = 1
+    let high = max
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2)
+      const candidate = render(mid)
+      if (fits(candidate)) {
+        best = candidate
+        high = mid
+      } else low = mid + 1
+    }
+    return best
   }
-  return best
+  if (removable.length) {
+    const fitted = bisect(removable.length, count => {
+      const dropped = new Set(removable.slice(0, count))
+      const kept = groups.filter(group => !dropped.has(group)).flat()
+      const omittedMessages = removable.slice(0, count).reduce((sum, group) => sum + group.length, 0)
+      return mergePromptParts(renderInitialPromptParts(body, callerWorkDir, instructionsInSession, true,
+        { history: kept, omittedMessages }), reminder)
+    })
+    if (fitted) return fitted
+  }
+  // Multi-user-message turns with no assistant turns (e.g. advisor transcripts) have empty history;
+  // trim older prefix messages while keeping opening context, tool results, and the latest message.
+  const lastTask = current.findLastIndex(isReplayUserTask)
+  const removableCurrent = current.filter((message, i) =>
+    (history.length > 0 || i > 0) &&
+    i < current.length - 1 &&
+    i !== lastTask &&
+    !isCompactionSummary(message) &&
+    !(Array.isArray(message.content) && message.content.some(block =>
+      block?.type === "tool_result" || SERVER_TOOL_RESULT_BLOCK_TYPES.has(block?.type))))
+  if (!removableCurrent.length) return stripped
+  const droppedHistory = new Set(removable)
+  const keptHistory = groups.filter(group => !droppedHistory.has(group)).flat()
+  const omittedHistory = removable.reduce((sum, group) => sum + group.length, 0)
+  return bisect(removableCurrent.length, count => {
+    const dropped = new Set(removableCurrent.slice(0, count))
+    const keptPrefix = current.slice(0, -1).filter(message => !dropped.has(message))
+    return mergePromptParts(renderInitialPromptParts(body, callerWorkDir, instructionsInSession, true, {
+      history: [...keptHistory, ...keptPrefix],
+      current: [current.at(-1)],
+      omittedMessages: omittedHistory + count,
+    }), reminder)
+  }) ?? stripped
 }
 
 function renderContinuedTurnParts(messages) {
@@ -5059,7 +5093,7 @@ function workDirectory(directory) {
   if (!path.isAbsolute(candidate)) return null
   try {
     if (fs.statSync(candidate).isDirectory()) return path.resolve(candidate)
-  } catch {}
+  } catch { }
   return null
 }
 
@@ -5126,7 +5160,7 @@ function handleControlConnection(socket) {
       socket.end(JSON.stringify({ error: { code: -32603, message: String(error?.message ?? error) } }) + "\n")
     }
   })
-  socket.on("error", () => {})
+  socket.on("error", () => { })
 }
 
 function sseEvent(event, data) {
@@ -5155,7 +5189,7 @@ function promptUsage(usage) {
   const total = tokenCount(usage.totalTokens)
   const inclusive = total > 0
     ? Math.abs(total - (rawInput + output)) <
-      Math.abs(total - (rawInput + cacheRead + cacheWrite + output))
+    Math.abs(total - (rawInput + cacheRead + cacheWrite + output))
     : cacheRead <= rawInput
   // Prompt input excludes cache creation, which is reported separately.
   const promptInput = inclusive ? rawInput : rawInput + cacheRead
@@ -5303,11 +5337,11 @@ async function measuredUsage(turn, step, content, result) {
   // tick so WAL commits settle, then emit 0 incremental usage without clearing
   // turn.stepCursor or stalling 1000ms per sibling call.
   if (!final && !turn.sawGenerationOutput && turn.measured && !batch?.pending && Array.isArray(batch?.steps) && batch.steps.length === 0 &&
-      isCausalSiblingSubstep(turn.stepsFile, turn.stepCursor)) {
+    isCausalSiblingSubstep(turn.stepsFile, turn.stepCursor)) {
     await new Promise((resolve) => setTimeout(resolve, STEP_USAGE_POLL_MS))
     batch = modelUsageAfter(turn.stepsFile, turn.stepCursor)
     if (!batch?.pending && Array.isArray(batch?.steps) && batch.steps.length === 0 &&
-        isCausalSiblingSubstep(turn.stepsFile, turn.stepCursor)) {
+      isCausalSiblingSubstep(turn.stepsFile, turn.stepCursor)) {
       step.usageKind = "agy_sibling"
       step.modelCalls = 0
       logBridgeEvent(turn.proc, turn, "agy_sibling", turn.stepCursor.source || "unknown", {}, {
@@ -5329,9 +5363,9 @@ async function measuredUsage(turn, step, content, result) {
   const steps = batch?.steps
   if (!complete(steps)) {
     if (final && !turn.sawGenerationOutput && !content?.some(block => block.type === "text" || block.type === "thinking") && !batch?.pending && Array.isArray(steps) && steps.length === 0 &&
-        expected !== null && measured.prompt > 0 && measured.prompt >= expected &&
-        measured.prompt <= expected + Math.max(16, Math.ceil(expected * 0.01)) &&
-        isCausalSiblingSubstep(turn.stepsFile, turn.stepCursor)) {
+      expected !== null && measured.prompt > 0 && measured.prompt >= expected &&
+      measured.prompt <= expected + Math.max(16, Math.ceil(expected * 0.01)) &&
+      isCausalSiblingSubstep(turn.stepsFile, turn.stepCursor)) {
       turn.stepUsageReconciled = true
       step.usageKind = "agy_same_generation"
       step.modelCalls = 0
@@ -5500,9 +5534,9 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
         if (!proc.cancelTurn(turn, partial(), true)) {
           dropFromPool(proc)
           proc.abandonTurn(turn)
-          proc.stop().catch(() => {})
+          proc.stop().catch(() => { })
         }
-        try { controller.error(signal?.reason || new Error("request aborted")) } catch {}
+        try { controller.error(signal?.reason || new Error("request aborted")) } catch { }
       }
       abortHandler = abort
       signal?.addEventListener("abort", abort, { once: true })
@@ -5526,10 +5560,10 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
           },
         })
         pingTimer = setInterval(() => {
-          try { send("ping", { type: "ping" }) } catch {}
+          try { send("ping", { type: "ping" }) } catch { }
         }, PING_INTERVAL_MS)
 
-        for (;;) {
+        for (; ;) {
           const event = await turn.next()
           if (finished) return
           if (event.type === "text") {
@@ -5550,7 +5584,7 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
             // meanwhile. Those chunks (text, thoughts, parallel calls) belong to
             // this response, so forward them before closing instead of leaving
             // them queued for the next HTTP response.
-            for (;;) {
+            for (; ;) {
               const queued = turn.events[0]
               if (!queued || !["tool", "text", "thinking"].includes(queued.type)) break
               turn.events.shift()
@@ -5592,7 +5626,7 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
                 if (next && finished) {
                   dropFromPool(next.proc)
                   next.proc.abandonTurn(next.turn)
-                  await next.proc.stop().catch(() => {})
+                  await next.proc.stop().catch(() => { })
                   return
                 }
                 if (next) {
@@ -5617,7 +5651,7 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
             send("error", { type: "error", error: streamErrorOf(event.error) })
             if (!event.error?.keepProcess) {
               dropFromPool(proc)
-              await proc.stop().catch(() => {})
+              await proc.stop().catch(() => { })
             }
             if (finished) return
             proc.finalizeTurn(turn)
@@ -5630,7 +5664,7 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
         if (finished) return
         turn.fail(error)
         dropFromPool(proc)
-        await proc.stop().catch(() => {})
+        await proc.stop().catch(() => { })
         if (finished) return
         try {
           closeBlock()
@@ -5644,7 +5678,7 @@ function makeAnthropicStream(proc, turn, body, msgId, signal, step = turn.regist
         } catch {
           proc.finalizeTurn(turn)
           detach()
-          try { controller.error(error) } catch {}
+          try { controller.error(error) } catch { }
         }
       }
     },
@@ -5742,7 +5776,7 @@ async function jsonResponseFromStream(stream, fallbackModel, fallbackId) {
       if (!current) return
       blocks.delete(payload.index)
       if (current.type === "tool_use" && current._json) {
-        try { current.input = JSON.parse(current._json) } catch {}
+        try { current.input = JSON.parse(current._json) } catch { }
       }
       delete current._json
       message.content.push(current)
@@ -5755,7 +5789,7 @@ async function jsonResponseFromStream(stream, fallbackModel, fallbackId) {
     }
   }
 
-  for (;;) {
+  for (; ;) {
     const { value, done } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
@@ -5773,8 +5807,8 @@ async function jsonResponseFromStream(stream, fallbackModel, fallbackId) {
     const status = Number.isInteger(streamError.status)
       ? streamError.status
       : streamError.code === "upstream_idle_timeout" ? 504
-      : streamError.type === "rate_limit_error" ? 429
-      : streamError.type === "permission_error" ? 403 : streamError.type === "invalid_request_error" ? 400 : 502
+        : streamError.type === "rate_limit_error" ? 429
+          : streamError.type === "permission_error" ? 403 : streamError.type === "invalid_request_error" ? 400 : 502
     return new Response(JSON.stringify({ type: "error", error: streamError }), {
       status,
       headers: {
@@ -5822,7 +5856,7 @@ async function beginTurn(proc, history, body, callerWorkDir, model, selection, p
   if (promptHasImage(contentParts) && !proc.supportsImages) {
     if (!proc.hasSentFirstTurn) {
       dropFromPool(proc)
-      await proc.stop().catch(() => {})
+      await proc.stop().catch(() => { })
     }
     throw new UnsupportedContent("image input with this agy ACP server; update to an image-capable agy version")
   }
@@ -5846,53 +5880,55 @@ async function importResult(entries, complete = () => ({ type: "success", key: "
   }
 }
 
-function accountImportMethods(importEntries) { return [
-  {
-    type: "api",
-    keyless: true,
-    ...ACCOUNT_ACTIONS.single,
-    prompts: [
-      {
-        ...ACCOUNT_NAME_PROMPT,
-        validate: value => { try { validateAccountName(String(value ?? "").trim()); return undefined } catch (error) { return error.message } },
-      },
-      {
-        type: "text", key: "source",
-        message: "Path to an agy profile folder or token file on the Magpie machine",
-        messages: {
-          zh: "运行 Magpie 的电脑上的 agy 配置目录或 token 文件路径",
-          "zh-TW": "執行 Magpie 的電腦上的 agy 設定目錄或 token 檔案路徑",
-          ja: "Magpie を実行しているコンピュータ上の agy 設定フォルダまたはトークンファイルのパス",
-          de: "Pfad zum agy-Profilordner oder zur Token-Datei auf dem Magpie-Rechner",
+function accountImportMethods(importEntries) {
+  return [
+    {
+      type: "api",
+      keyless: true,
+      ...ACCOUNT_ACTIONS.single,
+      prompts: [
+        {
+          ...ACCOUNT_NAME_PROMPT,
+          validate: value => { try { validateAccountName(String(value ?? "").trim()); return undefined } catch (error) { return error.message } },
         },
-        placeholder: "~/.config/agy-work",
-        validate: value => String(value ?? "").trim() ? undefined : "path required / 请输入路径",
-      },
-    ],
-    authorize: async (inputs, options) => importEntries([{ name: String(inputs?.name ?? "").trim(), source: expandHome(inputs?.source) }], options),
-  },
-  {
-    type: "api",
-    keyless: true,
-    ...ACCOUNT_ACTIONS.manifest,
-    prompts: [{
-      type: "text", key: "manifest",
-      message: "Path to a JSON manifest: [{\"name\":\"work\",\"source\":\"/path\"}] (existing accounts are kept)",
-      messages: {
-        zh: "清单 JSON 路径：[{\"name\":\"work\",\"source\":\"/path\"}]（已有账号会保留）",
-        "zh-TW": "清單 JSON 路徑：[{\"name\":\"work\",\"source\":\"/path\"}]（既有帳號會保留）",
-        ja: "JSON 一覧のパス：[{\"name\":\"work\",\"source\":\"/path\"}]（既存のアカウントは保持されます）",
-        de: "Pfad zur JSON-Liste: [{\"name\":\"work\",\"source\":\"/path\"}] (vorhandene Konten bleiben erhalten)",
-      },
-      placeholder: "~/agy-accounts.json",
-      validate: value => String(value ?? "").trim() ? undefined : "path required / 请输入路径",
-    }],
-    authorize: async (inputs, options) => {
-      try { return await importEntries(readManifest(expandHome(inputs?.manifest)), options) }
-      catch (error) { return { type: "failed", error: error instanceof ImportError ? error.message : "could not read the manifest" } }
+        {
+          type: "text", key: "source",
+          message: "Path to an agy profile folder or token file on the Magpie machine",
+          messages: {
+            zh: "运行 Magpie 的电脑上的 agy 配置目录或 token 文件路径",
+            "zh-TW": "執行 Magpie 的電腦上的 agy 設定目錄或 token 檔案路徑",
+            ja: "Magpie を実行しているコンピュータ上の agy 設定フォルダまたはトークンファイルのパス",
+            de: "Pfad zum agy-Profilordner oder zur Token-Datei auf dem Magpie-Rechner",
+          },
+          placeholder: "~/.config/agy-work",
+          validate: value => String(value ?? "").trim() ? undefined : "path required / 请输入路径",
+        },
+      ],
+      authorize: async (inputs, options) => importEntries([{ name: String(inputs?.name ?? "").trim(), source: expandHome(inputs?.source) }], options),
     },
-  },
-] }
+    {
+      type: "api",
+      keyless: true,
+      ...ACCOUNT_ACTIONS.manifest,
+      prompts: [{
+        type: "text", key: "manifest",
+        message: "Path to a JSON manifest: [{\"name\":\"work\",\"source\":\"/path\"}] (existing accounts are kept)",
+        messages: {
+          zh: "清单 JSON 路径：[{\"name\":\"work\",\"source\":\"/path\"}]（已有账号会保留）",
+          "zh-TW": "清單 JSON 路徑：[{\"name\":\"work\",\"source\":\"/path\"}]（既有帳號會保留）",
+          ja: "JSON 一覧のパス：[{\"name\":\"work\",\"source\":\"/path\"}]（既存のアカウントは保持されます）",
+          de: "Pfad zur JSON-Liste: [{\"name\":\"work\",\"source\":\"/path\"}] (vorhandene Konten bleiben erhalten)",
+        },
+        placeholder: "~/agy-accounts.json",
+        validate: value => String(value ?? "").trim() ? undefined : "path required / 请输入路径",
+      }],
+      authorize: async (inputs, options) => {
+        try { return await importEntries(readManifest(expandHome(inputs?.manifest)), options) }
+        catch (error) { return { type: "failed", error: error instanceof ImportError ? error.message : "could not read the manifest" } }
+      },
+    },
+  ]
+}
 
 function expandHome(value) {
   const text = String(value ?? "").trim()
@@ -5942,13 +5978,14 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
   const accountLogin = createAccountLoginMethod(findAgy, {
     resultForAccount: name => native ? nativeAccountResult(name) : { type: "success", key: "agy" },
     onImport: () => {
-    accountsCache = null
-    invalidateAccounts()
-    catalogCache.clear()
-    offeredProbes.clear()
-    forgetStoredSignIn({ dead: true })
-    invalidateModelMetadataCache()
-  } })
+      accountsCache = null
+      invalidateAccounts()
+      catalogCache.clear()
+      offeredProbes.clear()
+      forgetStoredSignIn({ dead: true })
+      invalidateModelMetadataCache()
+    }
+  })
   return {
     auth: {
       provider: PROVIDER_ID,
@@ -6009,7 +6046,8 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
         ...(wslDistro() ? [] : [...accountImportMethods(importEntries), accountLogin]),
         ...(native ? [{
           type: "api", keyless: true, ...ACCOUNT_ACTIONS.saved,
-          prompts: [{ type: "text", key: "name", message: "Saved Bridge account name (no new Google sign-in)",
+          prompts: [{
+            type: "text", key: "name", message: "Saved Bridge account name (no new Google sign-in)",
             messages: { zh: "已保存的 Bridge 账号名称（无需重新登录 Google）", "zh-TW": "已儲存的 Bridge 帳號名稱（無需重新登入 Google）" },
             placeholder: "work",
             validate: value => { try { validateAccountName(String(value ?? "").trim()); return undefined } catch (error) { return error.message } },
@@ -6163,7 +6201,7 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
                   return streamResponse(proc, turn, body, init.signal)
                 } catch (error) {
                   dropFromPool(proc)
-                  await proc.stop().catch(() => {})
+                  await proc.stop().catch(() => { })
                   throw error
                 }
               }
@@ -6179,12 +6217,14 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
                   entry.turn.touchClient()
                 }
               }
-              const acquireOpts = { model, selection, tools, workDir, instructions, history: trailing.history,
+              const acquireOpts = {
+                model, selection, tools, workDir, instructions, history: trailing.history,
                 messages: body.messages, layout, nonstream: body.stream === false,
                 account: account.name, accountKey: account.key, geminiDir: account.dir, userId: body.metadata?.user_id || "",
                 validateReplay: () => validateAcpPromptBudget(
                   renderReplayPromptParts(body, callerWorkDir, systemAppend() && !!instructions, instructions),
-                  systemAppend() ? instructions : "", body) }
+                  systemAppend() ? instructions : "", body)
+              }
               const claim = (continuationOpts = null) => {
                 if (!promptAttempt) {
                   const key = promptAttemptKey(convKey, body, trailing, model, selection, tools, instructions)
@@ -6199,7 +6239,7 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
                 if (init.signal?.aborted) {
                   if (!acquireOpts.cancelContinuation) {
                     dropFromPool(proc)
-                    await proc.stop().catch(() => {})
+                    await proc.stop().catch(() => { })
                   } else {
                     proc.continuingCancel = false
                   }
@@ -6290,8 +6330,8 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
                     acquireOpts.validateReplay()
                     acquireOpts.replayReason = proc.dead ? "process_dead" : !historyMatches ? "history_changed"
                       : toolsGrew ? "tools_grew" : proc.workDir !== workDir ? "work_dir_changed"
-                      : !sameInstructions(proc.instructions, instructions) ? "instructions_changed"
-                      : turn.done ? "tool_turn_ended" : turn.cancelRequested ? "tool_turn_cancelling" : "incomplete_tool_results"
+                        : !sameInstructions(proc.instructions, instructions) ? "instructions_changed"
+                          : turn.done ? "tool_turn_ended" : turn.cancelRequested ? "tool_turn_cancelling" : "incomplete_tool_results"
                     logBridgeEvent(proc, turn, "replay", acquireOpts.replayReason)
                     claim()
                     // Incompatible context needs replay. Keep the results for
@@ -6336,8 +6376,10 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
                 if (!acquireOpts.ownerKey && !acquireOpts.reclaimedKey && pool.get(convKey)?.turn && !pool.get(convKey).turn.cancelRequested) {
                   const proc = pool.get(convKey)
                   if (!canReplayUnmatchedFork(proc, body, resultBlocks, acquireOpts)) {
-                    const recovered = await recoverStaleTurn({ agy, convKey, proc, turn: proc.turn,
-                      body, resultBlocks, acquireOpts, isFresh, begin, claim })
+                    const recovered = await recoverStaleTurn({
+                      agy, convKey, proc, turn: proc.turn,
+                      body, resultBlocks, acquireOpts, isFresh, begin, claim
+                    })
                     if (recovered) return streamResponse(recovered.proc, recovered.turn, body, init.signal)
                     return jsonError(409, "agy bridge: no active MCP call matches these tool results")
                   }
@@ -6373,7 +6415,7 @@ export const AntigravityBridgePlugin = async (input = {}, options = {}) => {
                   await retire(failedProc.convKey, failedProc)
                 } else {
                   dropFromPool(failedProc)
-                  await failedProc.stop().catch(() => {})
+                  await failedProc.stop().catch(() => { })
                 }
                 if (promptAttempt) {
                   promptAttempts.delete(promptAttempt.key)
@@ -6492,24 +6534,30 @@ function jsonError(status, message, code, optionsOrNoRetry = false) {
   return new Response(
     JSON.stringify({
       type: "error",
-      error: { type: status === 400 ? "invalid_request_error" : "api_error",
-        ...(code ? { code } : {}), message: String(message || "unknown error") },
+      error: {
+        type: status === 400 ? "invalid_request_error" : "api_error",
+        ...(code ? { code } : {}), message: String(message || "unknown error")
+      },
     }),
-    { status, headers: { "Content-Type": "application/json",
-      ...(opts.noRetry ? { "x-should-retry": "false" } : {}),
-      ...(opts.headers || {}) } },
+    {
+      status, headers: {
+        "Content-Type": "application/json",
+        ...(opts.noRetry ? { "x-should-retry": "false" } : {}),
+        ...(opts.headers || {})
+      }
+    },
   )
 }
 
 process.once("exit", () => {
   for (const proc of allProcs) {
-    try { proc.child?.kill("SIGKILL") } catch {}
+    try { proc.child?.kill("SIGKILL") } catch { }
     if (proc.workspace) {
-      try { fs.rmSync(proc.workspace, { recursive: true, force: true }) } catch {}
+      try { fs.rmSync(proc.workspace, { recursive: true, force: true }) } catch { }
     }
   }
   if (shimDir) {
-    try { fs.rmSync(shimDir, { recursive: true, force: true }) } catch {}
+    try { fs.rmSync(shimDir, { recursive: true, force: true }) } catch { }
   }
 })
 

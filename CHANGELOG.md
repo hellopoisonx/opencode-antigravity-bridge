@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.2
+
+- Trim older prefix messages in `renderReplayPromptParts` when a replay has no assistant turns (e.g. `omp` advisor multi-user transcripts) or remains over the prompt budget after omitting historical groups, preserving opening context, tool results, the latest `isReplayUserTask`, and the final message.
+
 ## 0.11.1
 
 - Read Linux `secret-tool` (`service=gemini`, `username=antigravity`) in `model-metadata.mjs` so CloudCode / known model metadata (1M context and max output limits) applies on Linux keyring installs instead of falling back to 256K.

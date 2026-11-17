@@ -75,13 +75,14 @@ function slug(value) {
   return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "quota"
 }
 
-// One bridge quota window as an OMP usage limit. agy reports fractions of an
-// unnamed allowance, so amounts are percent-unit; quota it cannot measure
-// stays visible as unknown instead of being reported as exhausted.
+// One bridge quota window as an OMP usage limit. `usage.mjs` reports `used` as
+// a 0..100 percentage; quota it cannot measure stays visible as unknown instead
+// of being reported as exhausted.
 export function toUsageLimit(window) {
-  const used = Number(window.used)
-  const known = Number.isFinite(used) && used >= 0 && used <= 1
-  const remaining = known ? 1 - used : undefined
+  const raw = window?.used
+  const used = raw == null || raw === "" || typeof raw === "boolean" ? NaN : Number(raw)
+  const known = Number.isFinite(used) && used >= 0 && used <= 100
+  const remaining = known ? Math.max(0, 100 - used) : undefined
   const period = WINDOW_BY_SPAN.get(window.span) ?? { id: slug(window.name), label: window.name }
   const resetsAt = window.resetsAt ? Date.parse(window.resetsAt) : undefined
   return {
@@ -90,9 +91,9 @@ export function toUsageLimit(window) {
     scope: { provider: PROVIDER_ID, windowId: period.id },
     window: { ...period, ...(Number.isFinite(resetsAt) ? { resetsAt } : {}) },
     amount: known
-      ? { unit: "percent", remainingFraction: remaining, usedFraction: used, remaining: remaining * 100, used: used * 100, limit: 100 }
+      ? { unit: "percent", remainingFraction: remaining / 100, usedFraction: used / 100, remaining, used, limit: 100 }
       : { unit: "percent" },
-    status: !known ? "unknown" : remaining <= 0 ? "exhausted" : remaining <= 0.1 ? "warning" : "ok",
+    status: !known ? "unknown" : remaining <= 0 ? "exhausted" : remaining <= 10 ? "warning" : "ok",
   }
 }
 
@@ -172,7 +173,7 @@ export default async function antigravityBridge(pi, deps = {}) {
     // carries the reader's own message; empty windows mean "no report".
     usage: {
       id: PROVIDER_ID,
-      cacheVersion: 1,
+      cacheVersion: 2,
       async fetchUsage() {
         const { windows, error } = await plugin.auth.usage()
         if (!windows?.length) {

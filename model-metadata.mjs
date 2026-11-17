@@ -114,18 +114,21 @@ async function readAccountToken(account, agyPath) {
     try {
       const parsed = parseOAuthToken(await fs.promises.readFile(filePath, "utf8"))
       if (parsed) return parsed
-    } catch {}
+    } catch { }
   }
-  if (!account?.dir && allowHostCredentials && process.platform === "darwin" && !process.env.AGY_BRIDGE_DISABLE_KEYCHAIN) {
-    try {
-      const { stdout } = await execFileAsync(
-        "security",
-        ["find-generic-password", "-s", "gemini", "-a", "antigravity", "-w"],
-        { encoding: "utf8", timeout: KEYCHAIN_TIMEOUT_MS },
-      )
-      const parsed = parseOAuthToken(stdout)
-      if (parsed) return parsed
-    } catch {}
+  if (!account?.dir && allowHostCredentials && !process.env.AGY_BRIDGE_DISABLE_KEYCHAIN) {
+    const cmd = process.platform === "darwin"
+      ? ["security", ["find-generic-password", "-s", "gemini", "-a", "antigravity", "-w"]]
+      : process.platform === "linux"
+        ? ["secret-tool", ["lookup", "service", "gemini", "username", "antigravity"]]
+        : null
+    if (cmd) {
+      try {
+        const { stdout } = await execFileAsync(cmd[0], cmd[1], { encoding: "utf8", timeout: KEYCHAIN_TIMEOUT_MS })
+        const parsed = parseOAuthToken(stdout)
+        if (parsed) return parsed
+      } catch { }
+    }
   }
   return null
 }
@@ -191,7 +194,7 @@ export async function fetchCloudCodeModels(account, agyPath, refresh = false) {
             })
           }
         }
-      } catch {}
+      } catch { }
     }
     // A transient CloudCode failure (timeout, 5xx, expired token) must not
     // erase limits learned by an earlier successful fetch for this account.

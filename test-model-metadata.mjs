@@ -126,3 +126,27 @@ test("go-keyring-encoded tokens are accepted", async () => {
   await fetchCloudCodeModels({ key: "dir:" + dir, dir }, realishAgy, true)
   assert.ok(calls.length > 0 && calls.every(call => call.auth === "Bearer hex-token"))
 })
+
+test("Linux keyring lookup reads secret-tool when file token is absent", { skip: process.platform !== "linux" }, async () => {
+  fs.rmSync(path.join(fixtureHome, ".gemini"), { recursive: true, force: true })
+  delete process.env.AGY_BRIDGE_DISABLE_KEYCHAIN
+  const binDir = path.join(root, "fake-bin")
+  fs.mkdirSync(binDir, { recursive: true })
+  const script = path.join(binDir, "secret-tool")
+  fs.writeFileSync(script, `#!/bin/sh
+if [ "$1" = "lookup" ] && [ "$2" = "service" ] && [ "$3" = "gemini" ] && [ "$4" = "username" ] && [ "$5" = "antigravity" ]; then
+  printf '%s' '{"token":{"access_token":"linux-keyring-token"}}'
+  exit 0
+fi
+exit 1
+`, { mode: 0o700 })
+  const prevPath = process.env.PATH
+  process.env.PATH = `${binDir}:${prevPath || ""}`
+  try {
+    const result = await fetchCloudCodeModels({ key: "default" }, realishAgy, true)
+    assert.equal(result?.models.get("gemini-3.8-flash")?.context, 500_000)
+    assert.ok(calls.length > 0 && calls.every(call => call.auth === "Bearer linux-keyring-token"))
+  } finally {
+    process.env.PATH = prevPath
+  }
+})

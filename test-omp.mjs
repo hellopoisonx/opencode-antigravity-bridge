@@ -203,8 +203,8 @@ test("streamSimple restores api, compat, thinkingLevelMap and forwards bridge he
   assert.equal(call.options.headers["x-magpie-work-dir"], encodeURIComponent(process.cwd()))
 })
 
-test("toUsageLimit maps bridge windows onto OMP percent limits", () => {
-  assert.deepEqual(toUsageLimit({ name: "Antigravity Pro · 5 hours", used: 0.5, span: 5 * 60 * 60, resetsAt: "2026-11-17T12:00:00.000Z" }), {
+test("toUsageLimit maps bridge percent windows (0..100) onto OMP percent limits", () => {
+  assert.deepEqual(toUsageLimit({ name: "Antigravity Pro · 5 hours", used: 50, span: 5 * 60 * 60, resetsAt: "2026-11-17T12:00:00.000Z" }), {
     id: "antigravity-bridge:antigravity-pro-5-hours",
     label: "Antigravity Pro · 5 hours",
     scope: { provider: "antigravity-bridge", windowId: "5h" },
@@ -212,31 +212,40 @@ test("toUsageLimit maps bridge windows onto OMP percent limits", () => {
     amount: { unit: "percent", remainingFraction: 0.5, usedFraction: 0.5, remaining: 50, used: 50, limit: 100 },
     status: "ok",
   })
-  // 0.9375 is binary-exact; remaining 0.0625 must land in the warning band.
-  const warning = toUsageLimit({ name: "Antigravity Pro · 7 days", used: 0.9375, span: 7 * 24 * 60 * 60 })
+  // Sub-1% values must stay percent-unit (0.5 => 0.5% used, not 50%).
+  const subPercent = toUsageLimit({ name: "Antigravity Pro · 5 hours", used: 0.5, span: 5 * 60 * 60 })
+  assert.equal(subPercent.amount.used, 0.5)
+  assert.equal(subPercent.amount.usedFraction, 0.005)
+  assert.equal(subPercent.amount.remaining, 99.5)
+  assert.equal(subPercent.amount.remainingFraction, 0.995)
+  assert.equal(subPercent.status, "ok")
+  // 93.75% used => 6.25% remaining must land in the warning band.
+  const warning = toUsageLimit({ name: "Antigravity Pro · 7 days", used: 93.75, span: 7 * 24 * 60 * 60 })
   assert.equal(warning.scope.windowId, "weekly")
   assert.equal(warning.status, "warning")
   assert.equal(warning.window.durationMs, 604_800_000)
-  assert.equal(toUsageLimit({ name: "Maxed · 5 hours", used: 1, span: 5 * 60 * 60 }).status, "exhausted")
-  const unknown = toUsageLimit({ name: "Unknown · session", display: "Limits not available" })
-  assert.equal(unknown.status, "unknown")
-  assert.deepEqual(unknown.amount, { unit: "percent" })
-  assert.equal(unknown.window.id, "unknown-session")
-  assert.equal(unknown.window.resetsAt, undefined)
+  assert.equal(toUsageLimit({ name: "Maxed · 5 hours", used: 100, span: 5 * 60 * 60 }).status, "exhausted")
+  for (const bad of [undefined, null, "", -1, 101]) {
+    const unknown = toUsageLimit({ name: "Unknown · session", used: bad, display: "Limits not available" })
+    assert.equal(unknown.status, "unknown")
+    assert.deepEqual(unknown.amount, { unit: "percent" })
+    assert.equal(unknown.window.id, "unknown-session")
+    assert.equal(unknown.window.resetsAt, undefined)
+  }
 })
 
 test("registered usage provider reports bridge windows and surfaces reader errors", async () => {
   const dir = makeTempDir()
   const cacheFile = path.join(dir, "models.json")
   const windows = [
-    { name: "Antigravity Pro · 5 hours", aside: true, used: 0.5, span: 5 * 60 * 60, resetsAt: "2026-11-17T12:00:00.000Z" },
+    { name: "Antigravity Pro · 5 hours", aside: true, used: 25, span: 5 * 60 * 60, resetsAt: "2026-11-17T12:00:00.000Z" },
     { name: "Unknown · session", aside: true, display: "Limits not available" },
   ]
   const deps = makeFakeDeps([{ "m": { id: "m" } }], undefined, { windows, signIn: "kept" })
   await antigravityBridge(deps.pi, { plugin: deps.plugin, compat: deps.compat, cacheFile })
   const usage = deps.registrations[0].cfg.usage
   assert.equal(usage.id, "antigravity-bridge")
-  assert.equal(usage.cacheVersion, 1)
+  assert.equal(usage.cacheVersion, 2)
   const report = await usage.fetchUsage()
   assert.equal(report.provider, "antigravity-bridge")
   assert.equal(typeof report.fetchedAt, "number")

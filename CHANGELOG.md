@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1
+
+- Read Linux `secret-tool` (`service=gemini`, `username=antigravity`) in `model-metadata.mjs` so CloudCode / known model metadata (1M context and max output limits) applies on Linux keyring installs instead of falling back to 256K.
+- Fix `toUsageLimit` in `omp.mjs` to interpret `usage.mjs` `used` values as `0..100` percentages (instead of `0..1` fractions) and bump `usage.cacheVersion` to `2` so `/usage` and `omp usage` render non-zero windows instead of `no data`.
+
 ## 0.11.0
 
 - Wire the OMP face into the host's native usage and discovery surfaces: register a `antigravity-bridge` usage provider so `/usage` and `omp usage` render agy's quota windows (5 h / 7 d, resets, exhausted/warning bands) as percent limits, merged across accounts; map unknown quota to `status: unknown` instead of exhausted. Register `fetchDynamicModels` (replacing the ignored `refreshModels` field) so `omp models refresh` re-reads `agy models` through OMP's own bounded, cached discovery; a fallback or failing discovery throws so the registry keeps the live list. Session management and context management were already native (session id in the conversation key, `count_tokens` and compaction served by the bridge's Anthropic endpoint).

@@ -100,8 +100,14 @@ host. Models come from `agy models`, with thinking levels expanded from the
 effort variants each account actually advertises; the agy CLI login (including
 named accounts) is reused as-is. The catalog is cached at
 `~/.omp/agent/antigravity-bridge/models.json` and refreshed in the background
-after six hours; `omp models refresh` re-reads it immediately. Context and
-output limits come from CloudCode metadata, falling back to 256K / 32K.
+after six hours; `omp models refresh` re-reads it through OMP's native dynamic
+discovery. Context and output limits come from CloudCode metadata, falling
+back to 256K / 32K.
+
+Quota, context and sessions all ride OMP's native surfaces: `/usage` and
+`omp usage` render agy's quota windows (5 h / 7 d, with reset times) as percent
+limits, merged across accounts, while compaction and `count_tokens` are served
+directly by the bridge's Anthropic Messages endpoint.
 
 ## Use
 

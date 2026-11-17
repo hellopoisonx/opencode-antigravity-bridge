@@ -1,6 +1,7 @@
 // The OMP (oh-my-pi) face of the bridge.
 //
-// OMP registers a provider as { api, baseUrl, models, refreshModels, streamSimple }.
+// OMP registers a provider as { api, baseUrl, models, fetchDynamicModels,
+// streamSimple, usage }; usage feeds `/usage` and `omp usage`.
 // The bridge already implements the Anthropic Messages wire protocol in-process
 // and serves it from `agy acp`, so this file only translates: OMP's own
 // Anthropic adapter builds the request and parses the stream, and the bridge's
@@ -64,6 +65,37 @@ export function toModelConfig(item) {
   return model
 }
 
+// agy's two quota windows, as OMP window descriptors.
+const WINDOW_BY_SPAN = new Map([
+  [5 * 60 * 60, { id: "5h", label: "5 Hour", durationMs: 5 * 3_600_000 }],
+  [7 * 24 * 60 * 60, { id: "weekly", label: "Weekly", durationMs: 7 * 86_400_000 }],
+])
+
+function slug(value) {
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "quota"
+}
+
+// One bridge quota window as an OMP usage limit. agy reports fractions of an
+// unnamed allowance, so amounts are percent-unit; quota it cannot measure
+// stays visible as unknown instead of being reported as exhausted.
+export function toUsageLimit(window) {
+  const used = Number(window.used)
+  const known = Number.isFinite(used) && used >= 0 && used <= 1
+  const remaining = known ? 1 - used : undefined
+  const period = WINDOW_BY_SPAN.get(window.span) ?? { id: slug(window.name), label: window.name }
+  const resetsAt = window.resetsAt ? Date.parse(window.resetsAt) : undefined
+  return {
+    id: `${PROVIDER_ID}:${slug(window.name)}`,
+    label: window.name,
+    scope: { provider: PROVIDER_ID, windowId: period.id },
+    window: { ...period, ...(Number.isFinite(resetsAt) ? { resetsAt } : {}) },
+    amount: known
+      ? { unit: "percent", remainingFraction: remaining, usedFraction: used, remaining: remaining * 100, used: used * 100, limit: 100 }
+      : { unit: "percent" },
+    status: !known ? "unknown" : remaining <= 0 ? "exhausted" : remaining <= 0.1 ? "warning" : "ok",
+  }
+}
+
 export async function listModels(signal, pluginOverride) {
   const plugin = pluginOverride ?? await bridge()
   const catalog = await plugin.provider.models(undefined, {})
@@ -89,7 +121,7 @@ function writeCache(models, file = cachePath()) {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, JSON.stringify({ fetchedAt: Date.now(), models }))
-  } catch {}
+  } catch { }
 }
 
 export default async function antigravityBridge(pi, deps = {}) {
@@ -124,20 +156,31 @@ export default async function antigravityBridge(pi, deps = {}) {
     // agy owns auth; this literal only satisfies OMP's provider contract.
     apiKey: "agy",
     models: list,
-    // The restore phase must return the registered list: an empty return
-    // replaces it and OMP forgets the provider's models until the next fetch.
-    async refreshModels({ allowNetwork = true, signal } = {}) {
-      if (!allowNetwork) return currentModels
-      try {
-        const fresh = await listModels(signal, plugin)
-        if (fresh.length > 0 && (!fresh[FELL_BACK] || !currentModels.length)) {
-          applyModels(fresh, true)
-          return fresh
-        }
-        return currentModels
-      } catch {
-        return currentModels
+    // OMP's native discovery seam (`omp models refresh`, 15 s bound, cached a
+    // day). A fallback or failed fetch must throw, not return a stale list:
+    // the registry caches whatever comes back.
+    async fetchDynamicModels(signal) {
+      const fresh = await listModels(signal, plugin)
+      if (fresh.length === 0 || fresh[FELL_BACK] && currentModels.length) {
+        throw new Error("agy model discovery is unavailable")
       }
+      applyModels(fresh, true)
+      return fresh
+    },
+    // `/usage` and `omp usage`: OMP fetches this like any provider's quota.
+    // A thrown error is cached as a failed refresh with backoff, so it only
+    // carries the reader's own message; empty windows mean "no report".
+    usage: {
+      id: PROVIDER_ID,
+      cacheVersion: 1,
+      async fetchUsage() {
+        const { windows, error } = await plugin.auth.usage()
+        if (!windows?.length) {
+          if (error) throw new Error(error)
+          return null
+        }
+        return { provider: PROVIDER_ID, fetchedAt: Date.now(), limits: windows.map(toUsageLimit) }
+      },
     },
     streamSimple(model, context, options) {
       const mine = byId.get(model.id)
@@ -165,6 +208,6 @@ export default async function antigravityBridge(pi, deps = {}) {
         applyModels(fresh, true)
         register(fresh)
       }
-    }).catch(() => {})
+    }).catch(() => { })
   }
 }

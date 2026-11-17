@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { after, test } from "node:test"
-import antigravityBridge, { cachePath, toModelConfig } from "./omp.mjs"
+import antigravityBridge, { cachePath, toModelConfig, toUsageLimit } from "./omp.mjs"
 
 const FELL_BACK = Symbol.for("magpie.fellBack")
 const tempDirs = []
@@ -73,11 +73,14 @@ test("cachePath honors PI_CODING_AGENT_DIR and falls back to ~/.omp/agent", () =
   )
 })
 
-function makeFakeDeps(catalogSequence, fetchImpl = async () => new Response("ok")) {
+function makeFakeDeps(catalogSequence, fetchImpl = async () => new Response("ok"), usageResult) {
   let index = 0
   let calls = 0
   const plugin = {
-    auth: { loader: async () => ({ fetch: fetchImpl }) },
+    auth: {
+      loader: async () => ({ fetch: fetchImpl }),
+      usage: async () => usageResult ?? { windows: [], signIn: "kept" },
+    },
     provider: {
       models: async () => {
         calls++
@@ -131,21 +134,18 @@ test("antigravityBridge registers provider, skips caching fallback catalogs, and
   assert.equal(coldFallback.registrations[0].cfg.models.map(m => m.id).join(","), "gemini-4-argon")
   assert.equal(fs.existsSync(cacheFile), false)
 
-  // Real catalog persists to cache and refreshModels tracks updates + preserves non-fallback models.
+  // Real catalog persists to cache and fetchDynamicModels tracks updates; a
+  // fallback or failing discovery must throw so OMP keeps the live list.
   const deps = makeFakeDeps([realCatalog1, realCatalog2, fallbackCatalog, () => { throw new Error("boom") }])
   await antigravityBridge(deps.pi, { plugin: deps.plugin, compat: deps.compat, cacheFile })
   const cfg = deps.registrations.at(-1).cfg
   assert.equal(fs.existsSync(cacheFile), true)
   assert.deepEqual(cfg.models.map(m => m.id), ["gemini-3.8-flash"])
-  assert.deepEqual((await cfg.refreshModels({ allowNetwork: false })).map(m => m.id), ["gemini-3.8-flash"])
 
-  const refreshed = await cfg.refreshModels({ allowNetwork: true })
+  const refreshed = await cfg.fetchDynamicModels()
   assert.deepEqual(refreshed.map(m => m.id), ["gemini-4-carbon"])
-  // Non-network restore must reflect the latest refreshed list, not the initial snapshot.
-  assert.deepEqual((await cfg.refreshModels({ allowNetwork: false })).map(m => m.id), ["gemini-4-carbon"])
-  // Fallback or throwing refresh keeps the current non-fallback list intact.
-  assert.deepEqual((await cfg.refreshModels({ allowNetwork: true })).map(m => m.id), ["gemini-4-carbon"])
-  assert.deepEqual((await cfg.refreshModels({ allowNetwork: true })).map(m => m.id), ["gemini-4-carbon"])
+  await assert.rejects(() => cfg.fetchDynamicModels(), /unavailable/)
+  await assert.rejects(() => cfg.fetchDynamicModels(), /boom/)
 })
 
 test("antigravityBridge uses fresh cache without spawning discovery and refreshes stale cache in background", async () => {
@@ -201,4 +201,55 @@ test("streamSimple restores api, compat, thinkingLevelMap and forwards bridge he
   assert.deepEqual(call.options.metadata, { extra: true, user_id: "sess-123" })
   assert.equal(call.options.headers["x-custom"], "1")
   assert.equal(call.options.headers["x-magpie-work-dir"], encodeURIComponent(process.cwd()))
+})
+
+test("toUsageLimit maps bridge windows onto OMP percent limits", () => {
+  assert.deepEqual(toUsageLimit({ name: "Antigravity Pro · 5 hours", used: 0.5, span: 5 * 60 * 60, resetsAt: "2026-11-17T12:00:00.000Z" }), {
+    id: "antigravity-bridge:antigravity-pro-5-hours",
+    label: "Antigravity Pro · 5 hours",
+    scope: { provider: "antigravity-bridge", windowId: "5h" },
+    window: { id: "5h", label: "5 Hour", durationMs: 18_000_000, resetsAt: Date.parse("2026-11-17T12:00:00.000Z") },
+    amount: { unit: "percent", remainingFraction: 0.5, usedFraction: 0.5, remaining: 50, used: 50, limit: 100 },
+    status: "ok",
+  })
+  // 0.9375 is binary-exact; remaining 0.0625 must land in the warning band.
+  const warning = toUsageLimit({ name: "Antigravity Pro · 7 days", used: 0.9375, span: 7 * 24 * 60 * 60 })
+  assert.equal(warning.scope.windowId, "weekly")
+  assert.equal(warning.status, "warning")
+  assert.equal(warning.window.durationMs, 604_800_000)
+  assert.equal(toUsageLimit({ name: "Maxed · 5 hours", used: 1, span: 5 * 60 * 60 }).status, "exhausted")
+  const unknown = toUsageLimit({ name: "Unknown · session", display: "Limits not available" })
+  assert.equal(unknown.status, "unknown")
+  assert.deepEqual(unknown.amount, { unit: "percent" })
+  assert.equal(unknown.window.id, "unknown-session")
+  assert.equal(unknown.window.resetsAt, undefined)
+})
+
+test("registered usage provider reports bridge windows and surfaces reader errors", async () => {
+  const dir = makeTempDir()
+  const cacheFile = path.join(dir, "models.json")
+  const windows = [
+    { name: "Antigravity Pro · 5 hours", aside: true, used: 0.5, span: 5 * 60 * 60, resetsAt: "2026-11-17T12:00:00.000Z" },
+    { name: "Unknown · session", aside: true, display: "Limits not available" },
+  ]
+  const deps = makeFakeDeps([{ "m": { id: "m" } }], undefined, { windows, signIn: "kept" })
+  await antigravityBridge(deps.pi, { plugin: deps.plugin, compat: deps.compat, cacheFile })
+  const usage = deps.registrations[0].cfg.usage
+  assert.equal(usage.id, "antigravity-bridge")
+  assert.equal(usage.cacheVersion, 1)
+  const report = await usage.fetchUsage()
+  assert.equal(report.provider, "antigravity-bridge")
+  assert.equal(typeof report.fetchedAt, "number")
+  assert.equal(report.limits.length, 2)
+  assert.equal(report.limits[0].status, "ok")
+  assert.equal(report.limits[1].status, "unknown")
+
+  const failing = makeFakeDeps([{ "m": { id: "m" } }], undefined, { windows: [], error: "agy usage needs authentication.", signIn: "expired" })
+  await antigravityBridge(failing.pi, { plugin: failing.plugin, compat: failing.compat, cacheFile: path.join(dir, "other.json") })
+  const failingUsage = failing.registrations[0].cfg.usage
+  await assert.rejects(() => failingUsage.fetchUsage(), /agy usage needs authentication/)
+
+  const quiet = makeFakeDeps([{ "m": { id: "m" } }])
+  await antigravityBridge(quiet.pi, { plugin: quiet.plugin, compat: quiet.compat, cacheFile: path.join(dir, "quiet.json") })
+  assert.equal(await quiet.registrations[0].cfg.usage.fetchUsage(), null)
 })

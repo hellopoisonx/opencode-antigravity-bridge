@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0
+
+- Wire the OMP face into the host's native usage and discovery surfaces: register a `antigravity-bridge` usage provider so `/usage` and `omp usage` render agy's quota windows (5 h / 7 d, resets, exhausted/warning bands) as percent limits, merged across accounts; map unknown quota to `status: unknown` instead of exhausted. Register `fetchDynamicModels` (replacing the ignored `refreshModels` field) so `omp models refresh` re-reads `agy models` through OMP's own bounded, cached discovery; a fallback or failing discovery throws so the registry keeps the live list. Session management and context management were already native (session id in the conversation key, `count_tokens` and compaction served by the bridge's Anthropic endpoint).
+
 ## 0.10.0
 
 - Add the OMP (oh-my-pi) face (`omp.mjs`, `pi.extensions`, `exports["./omp"]`): register the `antigravity-bridge` provider on OMP, reuse the host's Anthropic Messages adapter with the bridge's in-process fetch, and carry the OMP session id and working directory into the bridge's conversation key and ACP workdir.

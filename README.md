@@ -134,8 +134,12 @@ omp --model antigravity-bridge/gemini-3.8-flash
 OMP 复用同一套 ACP 会话、精简 agent 和工具桥接，只是换了宿主：模型来自 `agy models`，
 按账号实际提供的 effort 展开思考等级；`agy` 自身的登录（含已有命名账号）直接生效。
 模型目录缓存在 `~/.omp/agent/antigravity-bridge/models.json`，超过六小时在后台刷新；
-`omp models refresh` 可立即重新读取。上下文窗口与输出上限按 CloudCode 元数据给出，
-未知时回退 256K / 32K。
+`omp models refresh` 走 OMP 原生动态发现重新读取。上下文窗口与输出上限按 CloudCode
+元数据给出，未知时回退 256K / 32K。
+
+额度与上下文同样走 OMP 原生通道：`/usage` 与 `omp usage` 把 agy 的配额窗口（5 小时 /
+7 天，含重置时间）作为百分比限额展示，多账号窗口合并；上下文压缩（compaction）与
+`count_tokens` 由桥接的 Anthropic Messages 端点直接应答，OMP 按声明的窗口自行调度。
 
 ### 账号管理入口
 

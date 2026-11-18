@@ -126,6 +126,8 @@ function writeCache(models, file = cachePath()) {
 }
 
 export default async function antigravityBridge(pi, deps = {}) {
+  // OMP runs in-process on the user's terminal, so suppress stderr diagnostics unless opted in.
+  process.env.AGY_BRIDGE_EVENTS ??= "0"
   const compat = deps.compat ?? await import("@earendil-works/pi-ai/compat")
   const innerStream = typeof compat.anthropicMessagesApi === "function"
     ? compat.anthropicMessagesApi().streamSimple

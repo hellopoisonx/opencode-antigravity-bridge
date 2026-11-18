@@ -262,3 +262,22 @@ test("registered usage provider reports bridge windows and surfaces reader error
   await antigravityBridge(quiet.pi, { plugin: quiet.plugin, compat: quiet.compat, cacheFile: path.join(dir, "quiet.json") })
   assert.equal(await quiet.registrations[0].cfg.usage.fetchUsage(), null)
 })
+
+test("antigravityBridge suppresses AGY_BRIDGE_EVENTS by default while preserving explicit opt-in", async () => {
+  const prev = process.env.AGY_BRIDGE_EVENTS
+  const dir = makeTempDir()
+  try {
+    delete process.env.AGY_BRIDGE_EVENTS
+    const a = makeFakeDeps([{ m: { id: "m" } }])
+    await antigravityBridge(a.pi, { plugin: a.plugin, compat: a.compat, cacheFile: path.join(dir, "a.json") })
+    assert.equal(process.env.AGY_BRIDGE_EVENTS, "0")
+
+    process.env.AGY_BRIDGE_EVENTS = "1"
+    const b = makeFakeDeps([{ m: { id: "m" } }])
+    await antigravityBridge(b.pi, { plugin: b.plugin, compat: b.compat, cacheFile: path.join(dir, "b.json") })
+    assert.equal(process.env.AGY_BRIDGE_EVENTS, "1")
+  } finally {
+    if (prev === undefined) delete process.env.AGY_BRIDGE_EVENTS
+    else process.env.AGY_BRIDGE_EVENTS = prev
+  }
+})

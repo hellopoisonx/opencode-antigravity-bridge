@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.3
+
+- Default `AGY_BRIDGE_EVENTS` to `0` in `omp.mjs` so `[agy-bridge]` stderr diagnostics do not print onto the OMP terminal unless explicitly enabled (`AGY_BRIDGE_EVENTS=1`).
+
 ## 0.11.2
 
 - Trim older prefix messages in `renderReplayPromptParts` when a replay has no assistant turns (e.g. `omp` advisor multi-user transcripts) or remains over the prompt budget after omitting historical groups, preserving opening context, tool results, the latest `isReplayUserTask`, and the final message.

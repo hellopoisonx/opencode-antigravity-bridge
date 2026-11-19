@@ -649,6 +649,24 @@ test("ACP user-input limit counts combined UTF-8 text and image labels separatel
   }
 })
 
+test("an oversized client system prompt is clipped to the ACP ceiling instead of rejected", () => {
+  const body = {
+    system: "SYSTEM-HEAD-MARK " + "s".repeat(150_000) + " SYSTEM-TAIL-MARK",
+    messages: [{ role: "user", content: "x".repeat(40_000) + " CURRENT-MARK" }],
+  }
+  const parts = renderReplayPromptParts(body, null, false)
+  const text = parts.map(part => part.text || "").join("")
+  assert.equal(validateAcpPromptBudget(parts), Buffer.byteLength(text, "utf8"))
+  assert(Buffer.byteLength(text, "utf8") <= 180_000)
+  assert.match(text, /bytes of system instructions omitted/)
+  assert(text.includes("SYSTEM-HEAD-MARK") && text.includes("SYSTEM-TAIL-MARK") && text.includes("CURRENT-MARK"))
+  // User content that alone exceeds the ceiling is still rejected.
+  assert.throws(() => validateAcpPromptBudget([
+    { type: "text", text: `<external_system_instructions>\nshort\n</external_system_instructions>\n` },
+    { type: "text", text: "x".repeat(180_001) },
+  ]), error => error.code === "context_length_exceeded")
+})
+
 test("an already compacted conversation over budget avoids the reactive-compaction phrase", () => {
   const previous = process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES
   process.env.AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES = "10"

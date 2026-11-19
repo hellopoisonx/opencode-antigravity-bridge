@@ -371,6 +371,14 @@ user profile or VM.
   transcript is unchanged, so subsequent turns can reuse the recovered session.
   If this protected content alone cannot fit, the bridge returns HTTP 400
   `context_length_exceeded` before submitting it or replacing the existing session.
+  When the client's system instructions are themselves the overage (they travel in
+  the first user turn by default), compaction cannot make room: as upstream agy-cli
+  does, the bridge keeps their head and tail with an explicit omission marker and
+  fits the first prompt to 180,000 bytes. User content is never clipped; only input
+  that is still too large after that returns HTTP 400 `prompt_budget_exceeded`.
+  Session installation (`AGY_BRIDGE_SYSTEM_APPEND=1`) is not a substitute: Antigravity
+  answers `RESOURCE_EXHAUSTED` (429) to real client system prompts appended to agy's
+  own, which is why upstream keeps them in the first user turn by default.
   Automatic client compaction depends on the client's error handling. A Claude
   Code summary in the final eight messages instead produces `prompt_budget_exceeded`
   without "prompt is too long", avoiding immediate compaction loops; shorten the

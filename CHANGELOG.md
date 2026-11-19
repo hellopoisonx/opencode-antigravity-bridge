@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.5
+
+- Fit an oversized first replay to AGY's per-user-input ceiling the way upstream `agy-cli` does: keep the head and tail of the embedded client system instructions with an explicit omission marker, and never clip user content. A large client system prompt (163 KB from omp) plus the current turn no longer fails with 400. Measured on agy 1.5.9: a 180,080-byte user prompt arrives intact, 234,080 bytes is truncated, so the 180,000-byte ceiling and its clipping target stay safe. `AGY_BRIDGE_SYSTEM_APPEND=1` is not an alternative: appending the real client system prompt to agy's own gets `RESOURCE_EXHAUSTED` (429), matching upstream's reason to keep instructions in the first user turn.
+
 ## 0.11.3
 
 - Default `AGY_BRIDGE_EVENTS` to `0` in `omp.mjs` so `[agy-bridge]` stderr diagnostics do not print onto the OMP terminal unless explicitly enabled (`AGY_BRIDGE_EVENTS=1`).

@@ -467,6 +467,12 @@ AGY 正在重复等待或已经停止等待的两种情况均可继续。历史�
 `context_length_exceeded`。只有最后八条消息中包含 Claude Code 压缩摘要时，错误才改用
 `prompt_budget_exceeded`，且不含“prompt is too long”字样，避免刚压缩后立即循环；
 此时需缩短摘要或当前输入。更早的摘要不会阻止后续再次压缩。
+若超限主要来自客户端系统指令（默认随首轮用户输入携带），压缩历史无法腾出空间：
+重放时按上游 agy-cli 的做法，只保留其首尾并插入省略字节标记，把首轮提示词裁剪到
+180,000 字节以内；用户本轮内容不会被裁剪。裁剪后仍超限才返回 HTTP 400
+`prompt_budget_exceeded`。会话指令模式（`AGY_BRIDGE_SYSTEM_APPEND=1`）不能作为替代：
+把真实客户端系统提示词附加到 agy 自己的提示词后，Antigravity 会回 `RESOURCE_EXHAUSTED`
+（429），这也是上游默认不使用 system append 的原因。
 客户端是否自动执行压缩取决于其错误处理。客户端负责保留完整历史并决定如何摘要。
 对于已核对的 OpenCode v1.2.0 / v2.2.7 完整标准压缩提示词（含 checkpoint 更新），
 Bridge 使用独立、无工具的临时会话生成摘要。

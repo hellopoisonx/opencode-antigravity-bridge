@@ -693,6 +693,82 @@ function acpPromptTextBytes(parts) {
   return promptTextBytes(parts) + parts.filter(part => part.type === "image").length * 1024
 }
 
+// Without session installation, the client system prompt travels inside the first
+// user turn and counts against AGY's per-user-input ceiling.
+function embeddedInstructionBytes(parts) {
+  let total = 0
+  for (const part of parts) {
+    if (part?.type !== "text" || typeof part.text !== "string") continue
+    for (const match of part.text.matchAll(/<external_system_instructions>[\s\S]*?<\/external_system_instructions>/g)) {
+      total += Buffer.byteLength(match[0], "utf8")
+    }
+  }
+  return total
+}
+
+// The longest UTF-8 prefix within `bytes`, never splitting a character.
+function utf8Prefix(text, bytes) {
+  if (bytes <= 0) return ""
+  const buffer = Buffer.from(text, "utf8")
+  if (buffer.length <= bytes) return text
+  let end = bytes
+  while (end > 0 && (buffer[end] & 0xc0) === 0x80) end--
+  return buffer.subarray(0, end).toString("utf8")
+}
+
+// Keeps the head and tail of `text` within `bytes`, marking the dropped middle.
+function clipTextMiddle(text, bytes) {
+  const total = Buffer.byteLength(text, "utf8")
+  if (total <= bytes) return text
+  let keep = bytes
+  for (let tries = 0; tries < 8 && keep > 0; tries++) {
+    const head = utf8Prefix(text, Math.floor(keep / 2))
+    const tail = text.slice(utf8Prefix(text, total - Math.ceil(keep / 2)).length)
+    const omitted = total - Buffer.byteLength(head, "utf8") - Buffer.byteLength(tail, "utf8")
+    const clipped = `${head}\n[... ${omitted} bytes of system instructions omitted to fit AGY's per-user-input limit ...]\n${tail}`
+    const size = Buffer.byteLength(clipped, "utf8")
+    if (size <= bytes) return clipped
+    keep -= size - bytes
+  }
+  return utf8Prefix(text, bytes)
+}
+
+// A client system prompt that leaves no room inside AGY's per-user-input ceiling
+// is clipped to its head and tail, as agy-cli fits its first prompt to a byte
+// budget. User content is never clipped here.
+function fitEmbeddedInstructions(parts, limit = acpPromptTextLimit()) {
+  let remaining = acpPromptTextBytes(parts) - limit
+  if (remaining <= 0) return parts
+  const out = []
+  for (const part of parts) {
+    if (remaining <= 0 || part.type !== "text" || typeof part.text !== "string") {
+      out.push(part)
+      continue
+    }
+    const match = /<external_system_instructions>\n([\s\S]*?)\n<\/external_system_instructions>/.exec(part.text)
+    if (!match) {
+      out.push(part)
+      continue
+    }
+    const body = match[1]
+    const bodyBytes = Buffer.byteLength(body, "utf8")
+    const keep = bodyBytes - remaining
+    if (keep < 2 * 1024) {
+      out.push(part)
+      continue
+    }
+    const clipped = clipTextMiddle(body, keep)
+    remaining -= bodyBytes - Buffer.byteLength(clipped, "utf8")
+    out.push({
+      ...part,
+      text: part.text.slice(0, match.index) +
+        `<external_system_instructions>\n${clipped}\n</external_system_instructions>` +
+        part.text.slice(match.index + match[0].length),
+    })
+  }
+  return remaining > 0 ? parts : out
+}
+
 function isCompactionSummary(message) {
   if (message?.role !== "user") return false
   if (typeof message.content === "string") return message.content.includes(COMPACTION_SUMMARY_MARKER)
@@ -742,6 +818,18 @@ function validateAcpPromptBudget(parts, instructions = "", body = null) {
   if (bytes > acpPromptTextLimit()) {
     const compacting = openCodeCompactionStart(body?.messages) >= 0
     const compacted = compacting || hasRecentCompactionSummary(body)
+    // Compaction cannot shrink a client system prompt that is itself the overage.
+    const embedded = embeddedInstructionBytes(parts)
+    if (embedded && bytes - embedded <= acpPromptTextLimit()) {
+      throw new ConflictError(
+        `agy bridge: this user turn would submit ${bytes} UTF-8 user-input bytes including image-label reserves (safe limit ${acpPromptTextLimit()}). ` +
+        `The client's system instructions are ${embedded} of those bytes and travel inside this user turn, so compaction cannot make room and they were too small to clip any further. ` +
+        "Shorten the client's system instructions, or start a new conversation with a smaller one. " +
+        "Increasing AGY_BRIDGE_MAX_PROMPT_TEXT_BYTES cannot raise this upstream limit. " +
+        "No model prompt or tool result from this request was sent.",
+        "prompt_budget_exceeded",
+      )
+    }
     throw new ConflictError(
       (compacting ? "agy bridge: the compaction request" : compacted ? "agy bridge: the compacted conversation" : "prompt is too long: agy bridge") +
       ` would submit ${bytes} UTF-8 user-input bytes including image-label reserves (safe limit ${acpPromptTextLimit()}). ` +
@@ -4702,7 +4790,7 @@ function renderReplayPromptParts(body, callerWorkDir, instructionsInSession, ins
     !isCompactionSummary(message) &&
     !(Array.isArray(message.content) && message.content.some(block =>
       block?.type === "tool_result" || SERVER_TOOL_RESULT_BLOCK_TYPES.has(block?.type))))
-  if (!removableCurrent.length) return stripped
+  if (!removableCurrent.length) return fitEmbeddedInstructions(stripped)
   const droppedHistory = new Set(removable)
   const keptHistory = groups.filter(group => !droppedHistory.has(group)).flat()
   const omittedHistory = removable.reduce((sum, group) => sum + group.length, 0)
@@ -4714,7 +4802,7 @@ function renderReplayPromptParts(body, callerWorkDir, instructionsInSession, ins
       current: [current.at(-1)],
       omittedMessages: omittedHistory + count,
     }), reminder)
-  }) ?? stripped
+  }) ?? fitEmbeddedInstructions(stripped)
 }
 
 function renderContinuedTurnParts(messages) {

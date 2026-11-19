@@ -3509,6 +3509,23 @@ for (const oversizedPart of ["arguments", "assistant-text"]) {
     ["context_length_exceeded", "prompt_budget_exceeded"].includes(payload.error?.code) && rejected.headers.get("x-should-retry") === "false", JSON.stringify(payload))
 }
 
+{ // A client system prompt that alone leaves no room is clipped, not rejected (omp sends 163 KB).
+  const body = {
+    model, system: "SYS-HEAD " + "s".repeat(150_000) + " SYS-TAIL", messages: [
+      { role: "user", content: "x".repeat(40_000) },
+      { role: "user", content: "CURRENT-CLIP-MARK" },
+    ]
+  }
+  const response = await callFetch(body)
+  const events = response.status === 200 ? (await readSSE(response)).events : []
+  const text = lastOf("user")?.text || ""
+  check("an oversized client system prompt is clipped into the first prompt, not rejected",
+    response.status === 200 && stopOf(events) === "end_turn" && Buffer.byteLength(text, "utf8") <= 180_000 &&
+    text.includes("SYS-HEAD") && text.includes("SYS-TAIL") && text.includes("CURRENT-CLIP-MARK") &&
+    /bytes of system instructions omitted/.test(text),
+    response.status === 200 ? "" : await response.text())
+}
+
 for (const recent of [true, false]) {
   const messages = [{ role: "user", content:
     "This session is being continued from a previous conversation. issue34-protected-summary " + "p".repeat(190_000) }]
